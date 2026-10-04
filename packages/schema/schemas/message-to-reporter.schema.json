@@ -22,48 +22,6 @@
           "type": "integer"
         },
         "type": {
-          "const": "syncPing",
-          "type": "string"
-        },
-        "sentAt": {
-          "minimum": 0,
-          "type": "number"
-        },
-        "payload": {
-          "additionalProperties": false,
-          "type": "object",
-          "required": ["t0"],
-          "properties": {
-            "t0": {
-              "minimum": 0,
-              "type": "number"
-            }
-          }
-        }
-      }
-    },
-    {
-      "additionalProperties": false,
-      "type": "object",
-      "required": ["protocol", "protocolVersion", "runId", "seq", "type", "sentAt", "payload"],
-      "properties": {
-        "protocol": {
-          "const": "performance-kit",
-          "type": "string"
-        },
-        "protocolVersion": {
-          "const": 1,
-          "type": "number"
-        },
-        "runId": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "seq": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "type": {
           "const": "start",
           "type": "string"
         },
@@ -74,7 +32,7 @@
         "payload": {
           "additionalProperties": false,
           "type": "object",
-          "required": ["entryId", "params", "warmupMs"],
+          "required": ["entryId", "params"],
           "properties": {
             "entryId": {
               "type": "string"
@@ -84,10 +42,6 @@
               "patternProperties": {
                 "^(.*)$": {}
               }
-            },
-            "warmupMs": {
-              "minimum": 0,
-              "type": "number"
             }
           }
         }

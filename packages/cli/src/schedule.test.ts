@@ -4,7 +4,6 @@ import type { Suite } from 'performance-kit-schema';
 const suite: Suite = {
   schemaVersion: 1,
   name: 'test',
-  defaults: { repetitions: 1 },
   entries: ['a', 'b', 'c'].map((id) => ({
     id,
     name: id,
@@ -15,8 +14,8 @@ const suite: Suite = {
   })),
 };
 describe('benchmark scheduling', () => {
-  it('interleaves repetitions and preserves stable identifiers', () => {
-    expect(scheduleSuite(suite).map((run) => `${run.entry.id}${run.repetition}`)).toEqual(['a1', 'b1', 'c1']);
+  it('runs each workload exactly once and preserves stable identifiers', () => {
+    expect(scheduleSuite(suite).map((run) => run.entry.id)).toEqual(['a', 'b', 'c']);
   });
   it('selects renderer and scene IDs before scheduling', () => {
     expect(scheduleSuite(suite, { renderer: ['b'] }).map((run) => run.entry.id)).toEqual(['b']);
@@ -26,12 +25,10 @@ describe('benchmark scheduling', () => {
     ]);
     expect(scheduleSuite(suite, { scene: ['other'] })).toEqual([]);
   });
-  it('rejects invalid repetition counts and shuffle seeds', () => {
-    expect(() => scheduleSuite(suite, { repetitions: 0 })).toThrow();
+  it('rejects invalid shuffle seeds', () => {
     expect(() => scheduleSuite(suite, { seed: Infinity })).toThrow('finite');
   });
-  it('rejects repeats and duplicate flat workloads', () => {
-    expect(() => scheduleSuite(suite, { repetitions: 2 })).toThrow('one repetition');
+  it('rejects duplicate flat workloads', () => {
     expect(() =>
       scheduleSuite({ ...suite, entries: [suite.entries[0], { ...suite.entries[0], id: 'duplicate' }] }),
     ).toThrow('Duplicate');

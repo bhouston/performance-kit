@@ -2,7 +2,7 @@ import type { CommandModule } from 'yargs';
 import { runSuite } from '../runner.js';
 const command: CommandModule = {
   command: 'run',
-  describe: 'Benchmark a suite and write flat raw and processed results',
+  describe: 'Benchmark each workload once and save flat metrics',
   builder: (yargs) =>
     yargs
       .option('suite', { type: 'string', demandOption: true })

@@ -35,7 +35,6 @@ it('preserves inbound arrival order despite reversed validator delays and transf
   };
   source.__performanceKitReceive = (message: { type: string; payload: Record<string, unknown> }) => {
     const at = performance.timeOrigin + performance.now();
-    if (message.type === 'syncPing') emit('syncPong', { t0: message.payload.t0, t1: at, t2: at });
     if (message.type === 'start') {
       emit('phase', { phase: 'load', start: { clock: 'reporter', t: at }, end: { clock: 'reporter', t: at } });
       emit('ready', { at });
@@ -69,7 +68,6 @@ it('preserves inbound arrival order despite reversed validator delays and transf
       url: 'http://127.0.0.1/demo',
       entryId: 'demo',
       params: {},
-      warmupMs: 0,
       durationMs: 10,
       setupTimeoutMs: 2000,
       capture: true,
@@ -84,7 +82,8 @@ it('preserves inbound arrival order despite reversed validator delays and transf
     expect(maxActiveValidators).toBe(1);
     expect(validationOrder).toEqual(Array.from({ length: sequence }, (_, index) => index));
     expect(result.capture?.bytes).toEqual([137, 80, 78, 71]);
-    expect(result.clockSync.samples).toHaveLength(15);
+    expect(result).not.toHaveProperty('clockSync');
+    expect(result.harness.captureSent).toBeGreaterThanOrEqual(result.harness.runEndObserved!);
     expect(result.reporter.frames).toHaveLength(1);
     const receipts = result.messages.filter(
       (message) => (message as { direction: string }).direction === 'toHarness',

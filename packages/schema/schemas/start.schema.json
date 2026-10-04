@@ -30,7 +30,7 @@
     "payload": {
       "additionalProperties": false,
       "type": "object",
-      "required": ["entryId", "params", "warmupMs"],
+      "required": ["entryId", "params"],
       "properties": {
         "entryId": {
           "type": "string"
@@ -40,10 +40,6 @@
           "patternProperties": {
             "^(.*)$": {}
           }
-        },
-        "warmupMs": {
-          "minimum": 0,
-          "type": "number"
         }
       }
     }

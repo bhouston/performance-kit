@@ -31,7 +31,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
-it('records warmup and measured frames, responds to clock sync and rejects wrong origins', async () => {
+it('measures first ready frames, records receipts and rejects wrong origins', async () => {
   vi.useFakeTimers();
   const messages: Record<string, any>[] = [];
   let listener: ((event: { source: unknown; origin: string; data: unknown }) => void) | undefined;
@@ -73,15 +73,13 @@ it('records warmup and measured frames, responds to clock sync and rejects wrong
         payload,
       },
     });
-  send('syncPing', { t0: 100 }, 'https://attacker.example');
+  send('start', { entryId: 'cube', params: {} }, 'https://attacker.example');
   seq = 0; // An untrusted sender has its own sequence; it cannot consume the harness sequence.
   expect(messages.some((message) => message.type === 'syncPong')).toBe(false);
-  send('syncPing', { t0: 100 });
-  expect(messages.find((message) => message.type === 'syncPong')?.payload.t0).toBe(100);
-  send('start', { entryId: 'cube', params: {}, warmupMs: 0 });
+  send('start', { entryId: 'cube', params: {} });
   await Promise.resolve();
-  const warmup = reporter.frameBegin({ animationTime: 1 });
-  reporter.frameEnd(warmup);
+  const first = reporter.frameBegin({ animationTime: 1 });
+  reporter.frameEnd(first);
   send('run', { durationMs: 20 });
   const token = reporter.frameBegin({ animationTime: 2 });
   reporter.frameEnd(token);
@@ -89,10 +87,12 @@ it('records warmup and measured frames, responds to clock sync and rejects wrong
   await vi.advanceTimersByTimeAsync(21);
   const result = messages.find((message) => message.type === 'runEnd')?.payload;
   expect(result.frames).toHaveLength(2);
+  expect(result.frames[0].cpuStart).toBeGreaterThanOrEqual(result.runStart);
+  expect(result.startReceived).toBeLessThanOrEqual(result.runStart);
   expect(result.frames[1]).toMatchObject({ animationTime: 2, gpuStart: '100', gpuEnd: '200' });
-  expect(result.messages.map((message: { type: string }) => message.type)).toEqual(['syncPing', 'start', 'run']);
+  expect(result.messages.map((message: { type: string }) => message.type)).toEqual(['start', 'run']);
   seq += 1; // Simulate a dropped harness message.
-  send('syncPing', { t0: 200 });
+  send('run', { durationMs: 20 });
   expect(messages.filter((message) => message.type === 'error').at(-1)?.payload.message).toContain(
     'dropped/reordered sequence',
   );

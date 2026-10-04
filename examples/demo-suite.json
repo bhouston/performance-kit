@@ -2,9 +2,6 @@
   "schemaVersion": 1,
   "name": "Cube and deliberate jank",
   "defaults": {
-    "warmupMs": 300,
-    "repetitions": 1,
-    "order": "interleaved",
     "vsync": "on"
   },
   "entries": [

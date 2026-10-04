@@ -20,13 +20,12 @@ Each renderer/scene pair has one folder:
 ```text
 results/<renderer.id>/<scene.id>/
   screenshot.avif
-  raw.json
   metrics.json
 ```
 
-`RunResult` describes `raw.json`: original frame records, clock synchronization, phase marks, responsiveness records, and environment metadata. It does not contain derived statistics.
+`RunResult` is the in-memory collection input to `processRun`, and the legacy raw.json migration format. Its optional clock sync fields exist only to read historical files; new collection performs no synchronization.
 
-`ProcessedResult` describes `metrics.json`: exact statistics and display-ready timeline, histogram, and detail data. It contains no raw frames, message logs, harness stamps, or clock-sync samples. `screenshot` indicates whether the fixed screenshot asset exists. `validateProcessedResult` returns an Ajv boolean; `assertProcessedResult` throws a descriptive validation error.
+`ProcessedResult` describes canonical version 2 metrics.json: exact statistics, compact timeline and detail data, and independent harness/client timing context. It stores no raw frame objects, clock sync samples, delivery discrepancies or histogram bins. `screenshot` indicates the fixed screenshot asset. `validateProcessedResult` returns an Ajv boolean; `assertProcessedResult` throws a descriptive validation error.
 
 ```ts
 import { processRun } from 'performance-kit-schema/process';
@@ -35,14 +34,16 @@ const metrics = processRun(rawResult);
 assertProcessedResult(metrics);
 ```
 
-The CLI preprocesses raw results with `processRun`; browsers read only metrics and images. Statistics and histogram counts use every measured raw observation before display reduction. Warmup frames remain excluded. Medians, percentiles, jitter, CPU/GPU summaries, setup statistics, and phase totals are exact full-data calculations. Every processed duration or timing value uses seconds, including configuration, summaries, histogram bounds, costs, block/script durations, and delivery discrepancies. `typicalFps` and `tailFps` are precomputed from the exact measured median and p95; FPS remains frames per second.
+The CLI processes complete observations in memory and atomically writes metrics.json directly. New runs measure the first ready frames, without warmup or repetitions. Capture occurs after measurement. Historical raw files retain their recorded measured bounds on migration; deleted warmup observations cannot be recreated from old metrics.
 
-Timeline coordinates are relative seconds, corrected to the harness start when clock sync is available. Minimal results without sync use a reporter-local origin and omit cross-clock setup estimates. Block and script durations are already computed for display.
+All stored durations use seconds. `typicalFps` and `tailFps` are derived from exact median and p95 intervals. `measuredIntervalSeconds` retains every positive measured frame interval at full precision for comparisons and viewer histogram calculations. Its length must match `statistics.intervalCount`.
 
-`frameSeconds` stores one relative timestamp for every consecutive frame after ready, including warmup and capture frames, including the final frame. CPU and GPU costs use aligned `cpuSeconds` and `gpuSeconds` arrays; unavailable values are `null`. Times round to four decimal places (0.1 ms), and costs round to five decimal places in seconds (0.01 ms). `frameIndices` selects at most 1,536 frame indices using a union of interval, CPU, and GPU extrema. The viewer draws those indices and computes each displayed interval using timestamp `i + 1` minus timestamp `i` (or the preceding actual interval at the final frame); it never subtracts two decimated samples, which would invent gaps.
+Timeline coordinates use client-relative seconds from `startReceived`, falling back to hello, a client phase, the first frame or ready for minimal and historical input. Client setup time is ready minus startReceived (hello for historical input). No cross-clock differences are calculated. Harness phases cannot be positioned on the client timeline and are omitted from it.
 
-`watchdogSeconds` contains setup tick timestamps through the ready mark when available, retaining each plotted tick's actual predecessor. `watchdogIndices` selects at most 512 endpoints; `watchdogPeriodSeconds: 0.016` lets the viewer display lateness as the adjacent timestamp difference minus 0.016 seconds. These are display transformations only; all summary statistics remain precomputed from full-precision raw data.
+`timing.timeUnit` is `epochSeconds`. `timing.harness` retains independent harness stamps; `timing.reporter` retains hello, startReceived, ready, runStart and runEnd when available. `timing.messages` keeps clock-tagged send/receive stamps for diagnostics without subtracting clocks. Historical sync messages are discarded.
 
-The timeline declares `timeUnit: "seconds"` and `valueUnit: "seconds"`. Phase, block, and script start/end coordinates use the same seconds precision; precomputed `durationSeconds` and summary statistics keep their full precision. Adjacent rounded timestamps may introduce at most 0.1 ms of display rounding error, without changing summary statistics.
+`frameSeconds` retains every consecutive visible frame timestamp, including the final frame. CPU and GPU costs use aligned nullable `cpuSeconds` and `gpuSeconds`. Display times round to 0.1 ms; costs round to 0.01 ms. Exact summaries and measured intervals remain full precision. `frameIndices` selects at most 1,536 extrema across the three series; adjacent timestamps reconstruct actual intervals rather than subtracting decimated samples.
 
-`downsampleExtrema` selects each chronological bucket's minimum and maximum and both endpoints. Timestamp arrays themselves are never decimated. Visible warmup/capture frames do not enter the measured summary statistics. Histograms contain at most 40 bins; details retain at most 128 phases, 256 blocks, 256 script attributions, and 256 discrepancies. Longest blocks and scripts and largest discrepancies are retained, while full-data setup and phase summaries remain exact.
+`watchdogSeconds` retains setup ticks through ready; `watchdogIndices` selects at most 512 endpoints, and `watchdogPeriodSeconds: 0.016` reconstructs lateness. Timeline and value units are seconds. Phase, block and script coordinates share the client origin; durationSeconds remains exact.
+
+`downsampleExtrema` retains endpoints and chronological bucket extrema. Detail lists retain at most 128 phases, 256 longest blocks and 256 longest script attributions; phase duration totals use the full observation set. Histogram bins are computed in the viewer from exact measured intervals.

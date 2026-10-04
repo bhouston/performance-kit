@@ -4,7 +4,7 @@ This React/Vite application displays processed performance results. It uses the 
 
 Build it with `pnpm --filter @performance-kit/viewer build`; the CLI copies `dist/` into generated report sites. Serve the report over HTTP.
 
-Results use the flat layout `results/<renderer.id>/<scene.id>/`: `raw.json` stores benchmark timestamps, `metrics.json` stores precomputed display data, and `screenshot.avif` stores the capture. The CLI processes measurements before the viewer opens. Static reports include metrics and screenshots without raw files.
+Results use the flat layout `results/<renderer.id>/<scene.id>/`: `metrics.json` is saved directly after measurement, and `screenshot.avif` stores the end-of-run capture. Both development and static reports use the same metrics-only layout.
 
 `index.json` contains compact references:
 
@@ -22,9 +22,9 @@ Results use the flat layout `results/<renderer.id>/<scene.id>/`: `raw.json` stor
 }
 ```
 
-The viewer fetches only this index, the referenced metrics and screenshots, and an optional `README.md` introduction. It never requests raw results. Metrics contain bounded display series, histogram bins, phase and block durations, script attribution, clock/discrepancy summaries and the four headline statistics. The timeline stores one elapsed time in seconds per frame, aligned CPU/GPU costs in seconds, and selected extrema indices for plotting. Consecutive elapsed times reconstruct plotted frame intervals; setup watchdog intervals similarly reconstruct lateness. Phase and block offsets use seconds, and all stored durations and exact timing statistics use seconds. The timeline includes frames from ready through warmup/capture and the measured run; the measured marker identifies the window used for summaries. The browser maps these display values to pixels without calculating statistical summaries.
+The viewer fetches the index, referenced metrics and screenshots, and an optional `README.md`. Metrics contain exact summary statistics, consecutive elapsed frame timestamps, aligned CPU/GPU costs, selected extrema indices, startup phases, blocks and script attribution. All durations use seconds. The framerate histogram is calculated from exact measured intervals; the responsiveness histogram uses consecutive setup watchdog ticks minus its 16 ms period. Bins are never persisted.
 
-Search, sorting and separate renderer/scene filters live in the top navigation. Entries have stable IDs and friendly names. Typical and Tail show precomputed FPS. Jitter and Setup use a duration formatter that accepts seconds and chooses milliseconds or seconds with meaningful precision. Expanding a card exposes frame/CPU/GPU timelines and precomputed detail tables. Raw data and A/B analysis remain available through the CLI.
+Search, sorting and renderer/scene filters live in the top navigation. Every visible card timeline share the duration of the longest currently filtered timeline. Hover over a line chart to see the elapsed time and nearest frame's frame interval. The Phases table shows each startup phase's total duration and total client setup time. Clock synchronization and discrepancy tables are removed. Typical and Tail use the precomputed exact median/p95 FPS. CLI comparisons read metrics directly.
 
 `performance-kit dev --out results/` always watches the results folder. Its index advertises `liveReload: true`, automatically connecting the viewer to Server-Sent Events. A `resultChanged` event includes `rendererId` and `sceneId`; the viewer fetches only that pair’s `metrics.json`, updates its capture and briefly highlights the affected card. A 404 removes that pair. A `readmeChanged` event refreshes only the introduction. Initial/reconnected `indexChanged` events refresh the full lightweight snapshot to recover missed changes. Reduced-motion preferences disable highlight animation.
 

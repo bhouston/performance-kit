@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { percentile, clockOffset, deriveRun, mergeBlocks, mannWhitney, compareRuns, summarizeRuns } from './derive.js';
+import { percentile, deriveRun, mergeBlocks, mannWhitney, compareRuns, summarizeRuns } from './derive.js';
 import { frameTimeColor, responsivenessColor } from './colorScales.js';
 import type { RunResult } from './index.js';
 function run(step = 10): RunResult {
@@ -46,17 +46,11 @@ describe('read-time statistics', () => {
     expect(d.mad).toBe(0);
     expect(d.gpu[0]!.value).toBe(2);
   });
-  it('selects minimum round trip and corrects clocks', () => {
-    expect(
-      clockOffset([
-        { t0: 0, t1: 20, t2: 21, t3: 31 },
-        { t0: 100, t1: 107, t2: 108, t3: 105 },
-      ]),
-    ).toBe(5);
+  it('uses client setup timing without cross-clock calculations', () => {
     const d = deriveRun(run());
     expect(d.setupMs).toBe(50);
-    expect(d.reporterSetupMs).toBe(50);
-    expect(d.discrepancies[0]!.ms).toBe(0);
+    expect(d).not.toHaveProperty('discrepancies');
+    expect(d).not.toHaveProperty('offsetMs');
   });
   it('excludes warmup and clips responsiveness blocks to setup', () => {
     const d = deriveRun(run());

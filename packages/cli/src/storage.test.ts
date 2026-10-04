@@ -30,7 +30,7 @@ const result: RunResult = {
   reporter: { frames: [] },
   status: 'timeout',
 };
-it('writes flat AVIF/raw/processed files atomically and overwrites a workload', async () => {
+it('writes only flat AVIF/metrics files atomically and overwrites a workload', async () => {
   const root = await mkdtemp(join(tmpdir(), 'performance-flat-'));
   try {
     const png = await sharp({
@@ -39,7 +39,8 @@ it('writes flat AVIF/raw/processed files atomically and overwrites a workload', 
       .png()
       .toBuffer();
     const file = await writeRun(root, structuredClone(result), png);
-    expect(file).toBe(join(root, 'test/cube/raw.json'));
+    expect(file).toBe(join(root, 'test/cube/metrics.json'));
+    await expect(readFile(join(root, 'test/cube/raw.json'))).rejects.toMatchObject({ code: 'ENOENT' });
     expect((await sharp(join(root, 'test/cube/screenshot.avif')).metadata()).hasAlpha).toBe(false);
     expect(RESULT_AVIF).toEqual({ quality: 90, chromaSubsampling: '4:4:4' });
     const index = await readReportIndex(root);
@@ -92,8 +93,10 @@ it('reprocesses legacy display metrics into numeric seconds arrays without chang
         ],
       },
     };
-    const rawFile = await writeRun(root, measured);
-    const rawBefore = await readFile(rawFile, 'utf8');
+    await writeRun(root, measured);
+    const rawFile = join(root, 'test/cube/raw.json');
+    const rawBefore = JSON.stringify(measured);
+    await writeFile(rawFile, rawBefore);
     const metricsFile = join(root, 'test/cube/metrics.json');
     await writeFile(
       metricsFile,
@@ -135,12 +138,28 @@ it('exports processed files and README without raw data and removes stale owned 
     expect(JSON.parse(await readFile(join(site, 'test/cube/metrics.json'), 'utf8')).entry.renderer.id).toBe('test');
     await expect(readFile(join(site, 'test/cube/raw.json'))).rejects.toMatchObject({ code: 'ENOENT' });
     await rm(join(root, 'README.md'));
-    await rm(join(root, 'test/cube/raw.json'));
+    await rm(join(root, 'test/cube/metrics.json'));
     await buildReport(root, site);
     await expect(readFile(join(site, 'README.md'))).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(readFile(join(site, 'test/cube/metrics.json'))).rejects.toMatchObject({ code: 'ENOENT' });
   } finally {
     await rm(root, { recursive: true, force: true });
     await rm(site, { recursive: true, force: true });
+  }
+});
+
+it('treats metrics as canonical even when stale raw files remain, and rejects future versions', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'performance-canonical-'));
+  try {
+    const file = await writeRun(root, structuredClone(result));
+    await writeFile(join(root, 'test/cube/raw.json'), JSON.stringify({ ...result, runId: 'stale' }));
+    await processResults(root);
+    expect((await scanResults(root)).runs[0]?.result.runId).toBe('test');
+    const metrics = JSON.parse(await readFile(file, 'utf8'));
+    await writeFile(file, JSON.stringify({ ...metrics, schemaVersion: 3 }));
+    await expect(processResults(root)).rejects.toThrow('Invalid processed result');
+    expect(JSON.parse(await readFile(file, 'utf8')).schemaVersion).toBe(3);
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });

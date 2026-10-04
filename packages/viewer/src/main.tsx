@@ -15,7 +15,16 @@ const duration = (seconds: number | undefined) => {
   return `${Number(value.toPrecision(3))}${milliseconds ? 'ms' : 's'}`;
 };
 const fps = (value: number | undefined) => (value === undefined ? '—' : `${Number(value.toPrecision(3))}fps`);
-function Timeline({ result, kind = 'intervals' }: { result: ProcessedResult; kind?: 'intervals' | 'cpu' | 'gpu' }) {
+function Timeline({
+  result,
+  maxTime,
+  kind = 'intervals',
+}: {
+  result: ProcessedResult;
+  maxTime: number;
+  kind?: 'intervals' | 'cpu' | 'gpu';
+}) {
+  const [hover, setHover] = useState<{ time: number; value: number; x: number; y: number }>();
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const canvas = ref.current!;
@@ -29,7 +38,6 @@ function Timeline({ result, kind = 'intervals' }: { result: ProcessedResult; kin
       ctx.scale(dpr, dpr);
       ctx.clearRect(0, 0, width, height);
       const { timeline, statistics } = result;
-      const maxTime = Math.max(1, timeline.maxTime);
       // Exact summaries are processed offline. Adjacent elapsed times reconstruct only plotted intervals.
       const points: Point[] = timeline.frameIndices.flatMap((i) => {
         const time = timeline.frameSeconds[i]!;
@@ -51,20 +59,6 @@ function Timeline({ result, kind = 'intervals' }: { result: ProcessedResult; kin
           ? []
           : [[time, value] as Point];
       });
-      const watchdog: Point[] = timeline.watchdogIndices.flatMap((i) =>
-        i === 0
-          ? []
-          : [
-              [
-                timeline.watchdogSeconds[i]!,
-                Math.max(
-                  0,
-                  (timeline.watchdogSeconds[i]! - timeline.watchdogSeconds[i - 1]! - timeline.watchdogPeriodSeconds) *
-                    1000,
-                ),
-              ] as Point,
-            ],
-      );
       const ceiling = Math.max(100, (statistics.p99 ?? statistics.p95 ?? 0) * 1200);
       const clipped = points.some((point) => point[1] > ceiling);
       const x = (t: number) => 36 + (t / maxTime) * (width - 50),
@@ -85,7 +79,7 @@ function Timeline({ result, kind = 'intervals' }: { result: ProcessedResult; kin
         ctx.fillText(`${v === ceiling && clipped ? '≥' : ''}${Math.round(v)}`, 3, y(v) + 3);
       }
       ctx.fillText('ms', 3, height - 8);
-      ctx.fillText(statistics.offsetSeconds === undefined ? '0s · reporter-relative' : '0s', 36, height - 8);
+      ctx.fillText('0s', 36, height - 8);
       ctx.fillText(`${maxTime.toFixed(1)}s`, width - 43, height - 8);
       for (const phase of timeline.phases) {
         ctx.fillStyle = color(`--chart-${phase.phase}`);
@@ -162,7 +156,19 @@ function Timeline({ result, kind = 'intervals' }: { result: ProcessedResult; kin
         }
       };
       series(points, frameTimeColor);
-      series(watchdog, responsivenessColor, true);
+      if (hover) {
+        ctx.strokeStyle = color('--chart-reference');
+        ctx.setLineDash([2, 3]);
+        ctx.beginPath();
+        ctx.moveTo(x(hover.time), 8);
+        ctx.lineTo(x(hover.time), height - 28);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = color('--chart-reference');
+        ctx.beginPath();
+        ctx.arc(x(hover.time), y(hover.value), 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
     };
     draw();
     const observer = new ResizeObserver(draw);
@@ -173,27 +179,87 @@ function Timeline({ result, kind = 'intervals' }: { result: ProcessedResult; kin
       observer.disconnect();
       theme.removeEventListener('change', draw);
     };
-  }, [result, kind]);
+  }, [result, kind, maxTime, hover]);
   return (
-    <canvas
-      ref={ref}
-      className="timeline"
-      aria-label={`${kind} timeline with setup phases, ready marker and frame timings`}
-    />
+    <div className="timeline-container">
+      <canvas
+        ref={ref}
+        className="timeline"
+        aria-label="Frame and setup timing timeline"
+        onMouseLeave={() => setHover(undefined)}
+        onMouseMove={(event) => {
+          const canvas = event.currentTarget;
+          const rect = canvas.getBoundingClientRect();
+          const px = event.clientX - rect.left;
+          const time = ((px - 36) / (rect.width - 50)) * maxTime;
+          const frames = result.timeline.frameSeconds;
+          if (px < 36 || px > rect.width - 14 || !frames.length || time < frames[0]! || time > frames.at(-1)!) {
+            setHover(undefined);
+            return;
+          }
+          let low = 0,
+            high = frames.length - 1;
+          while (low < high) {
+            const middle = Math.floor((low + high) / 2);
+            if (frames[middle]! < time) low = middle + 1;
+            else high = middle;
+          }
+          const index = low > 0 && time - frames[low - 1]! < frames[low]! - time ? low - 1 : low;
+          const value =
+            kind === 'intervals'
+              ? index + 1 < frames.length
+                ? frames[index + 1]! - frames[index]!
+                : index > 0
+                  ? frames[index]! - frames[index - 1]!
+                  : null
+              : kind === 'cpu'
+                ? result.timeline.cpuSeconds[index]
+                : result.timeline.gpuSeconds[index];
+          setHover(
+            value === null || value === undefined || value < 0
+              ? undefined
+              : {
+                  time: frames[index]!,
+                  value: value * 1000,
+                  x: Math.min(px + 12, rect.width - 180),
+                  y: event.clientY - rect.top,
+                },
+          );
+        }}
+      />
+      {hover && (
+        <div className="timeline-tooltip" style={{ left: hover.x, top: Math.max(0, hover.y - 32) }}>
+          {duration(hover.time)} · {kind === 'intervals' ? 'Frame' : kind.toUpperCase()} {duration(hover.value / 1000)}
+        </div>
+      )}
+    </div>
   );
 }
-function Histogram({ result }: { result: ProcessedResult }) {
-  const { histogram } = result;
+function Histogram({ values, responsiveness = false }: { values: number[]; responsiveness?: boolean }) {
+  const max = values.reduce((value, item) => Math.max(value, item), 0);
+  const count = Math.min(40, values.length);
+  const width = count ? max / count : 0;
+  const bins = Array.from({ length: count }, (_, index) => ({
+    start: index * width,
+    end: (index + 1) * width,
+    count: 0,
+  }));
+  for (const value of values) bins[Math.min(count - 1, width ? Math.floor(value / width) : 0)]!.count++;
+  const histogram = {
+    bins,
+    count: values.length,
+    maxCount: bins.reduce((value, bin) => Math.max(value, bin.count), 0),
+  };
   return (
     <div>
       <div className="histogram">
         {histogram.bins.map((bin, i) => (
           <div
             key={i}
-            title={`${duration(bin.start)}–${duration(bin.end)}: ${bin.count} frames`}
+            title={`${duration(bin.start)}–${duration(bin.end)}: ${bin.count} samples`}
             style={{
               height: `${Math.max(2, (bin.count / Math.max(1, histogram.maxCount)) * 100)}%`,
-              background: frameTimeColor(bin.start * 1000),
+              background: (responsiveness ? responsivenessColor : frameTimeColor)(bin.start * 1000),
             }}
           />
         ))}
@@ -201,7 +267,7 @@ function Histogram({ result }: { result: ProcessedResult }) {
       <div className="axis">
         0ms{' '}
         <span>
-          {duration(histogram.bins.at(-1)?.end)} · {histogram.count} intervals
+          {duration(histogram.bins.at(-1)?.end)} · {histogram.count} samples
         </span>
       </div>
     </div>
@@ -209,24 +275,23 @@ function Histogram({ result }: { result: ProcessedResult }) {
 }
 function Detail({ result }: { result: ProcessedResult }) {
   const { statistics, timeline } = result;
-  const [kind, setKind] = useState<'intervals' | 'cpu' | 'gpu'>('intervals');
+  const intervals =
+    result.measuredIntervalSeconds ??
+    timeline.frameSeconds.slice(0, -1).flatMap((time, index) => {
+      const next = timeline.frameSeconds[index + 1]!;
+      return (timeline.runStart === undefined || time >= timeline.runStart) && next > time ? [next - time] : [];
+    });
+  const lateness = timeline.watchdogSeconds
+    .slice(1)
+    .map((time, index) => Math.max(0, time - timeline.watchdogSeconds[index]! - timeline.watchdogPeriodSeconds));
   return (
     <div className="detail">
-      <div className="detail-heading">
-        <h3>Frame timings</h3>
-        <select aria-label="Timing series" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
-          <option value="intervals">Frame intervals</option>
-          <option value="cpu">CPU submit</option>
-          <option value="gpu">GPU cost</option>
-        </select>
-      </div>
-      <Timeline result={result} kind={kind} />
       <div className="detail-grid">
         <section>
-          <h3>Frame distribution</h3>
-          <Histogram result={result} />
+          <h3>Framerate</h3>
+          <Histogram values={intervals} />
           <p>
-            p99 {duration(statistics.p99)} · MAD {duration(statistics.mad)}
+            Frame intervals · p99 {duration(statistics.p99)} · MAD {duration(statistics.mad)}
           </p>
           <p>
             CPU median {duration(statistics.cpuMedian)} · p95 {duration(statistics.cpuP95)}
@@ -236,87 +301,42 @@ function Detail({ result }: { result: ProcessedResult }) {
           </p>
         </section>
         <section>
-          <h3>Clock & startup</h3>
+          <h3>Responsiveness</h3>
+          <Histogram values={lateness} responsiveness />
           <p>
-            Clock offset {duration(statistics.offsetSeconds)} · drift {duration(statistics.driftSeconds)} · hidden
-            startup {duration(statistics.hiddenStartupSeconds)}
+            Setup watchdog lateness · blocked {duration(statistics.setupBlockedSeconds)} · max block{' '}
+            {duration(statistics.setupMaxBlockSeconds)}
           </p>
-          <p>
-            Unaccounted setup {duration(statistics.unaccountedSeconds)} · blocked{' '}
-            {duration(statistics.setupBlockedSeconds)}
-          </p>
-          <table>
-            <tbody>
-              {timeline.discrepancies.map((v, i) => (
-                <tr key={i}>
-                  <td>{v.name}</td>
-                  <td className={v.flagged ? 'warning' : ''}>{duration(v.seconds)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </section>
         <section>
           <h3>Phases</h3>
           <table>
             <tbody>
-              {timeline.phases.map((p, i) => (
-                <tr key={i}>
-                  <td>{p.phase}</td>
-                  <td>{duration(p.durationSeconds)}</td>
+              {Object.entries(statistics.phaseDurations).map(([phase, seconds]) => (
+                <tr key={phase}>
+                  <td>{phase}</td>
+                  <td>{duration(seconds)}</td>
                 </tr>
               ))}
-            </tbody>
-          </table>
-        </section>
-        <section>
-          <h3>Main-thread blocks</h3>
-          <table>
-            <tbody>
-              {timeline.blocks.map((b, i) => (
-                <tr key={i}>
-                  <td>
-                    {b.sources.join(', ')}
-                    {result.attribution
-                      .filter((script) => script.start < b.end && script.end > b.start)
-                      .map((script, index) => (
-                        <div className="script-attribution" key={index}>
-                          <strong>{script.sourceFunctionName || script.invoker || 'anonymous script'}</strong> ·{' '}
-                          {duration(script.durationSeconds)}
-                          <span>
-                            {script.sourceURL || 'source unavailable'}
-                            {script.sourceCharPosition === undefined ? '' : ` @${script.sourceCharPosition}`}
-                          </span>
-                          {script.invoker && (
-                            <span>
-                              {script.invokerType ? `${script.invokerType}: ` : ''}
-                              {script.invoker}
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                  </td>
-                  <td>{duration(b.durationSeconds)}</td>
-                </tr>
-              ))}
+              <tr>
+                <th scope="row">Total setup</th>
+                <td>{duration(statistics.setupSeconds)}</td>
+              </tr>
             </tbody>
           </table>
         </section>
       </div>
-      <p className="muted">
-        {result.environment?.gpuAdapter?.description ?? 'GPU unspecified'} ·{' '}
-        {result.environment?.host?.os ?? 'OS unspecified'} ·{' '}
-        {result.environment?.crossOriginIsolated ? 'isolated clocks' : 'clock isolation unavailable'}
-      </p>
     </div>
   );
 }
 function Card({
   item,
+  maxTime,
   revision = 0,
   captureEpoch = 0,
 }: {
   item: RecordItem;
+  maxTime: number;
   revision?: number;
   captureEpoch?: number;
 }) {
@@ -378,7 +398,7 @@ function Card({
               </div>
             </div>
           </div>
-          <Timeline result={r} />
+          <Timeline result={r} maxTime={maxTime} />
         </div>
       </div>
       {(r.error || r.status !== 'ok') && <p className="error">{r.error?.message ?? r.status}</p>}
@@ -563,6 +583,7 @@ function App() {
         : (a.result.statistics[sort as 'median' | 'p95' | 'iqr' | 'setupSeconds'] ?? Infinity) -
           (b.result.statistics[sort as 'median' | 'p95' | 'iqr' | 'setupSeconds'] ?? Infinity),
     );
+  const maxTime = cards.reduce((longest, item) => Math.max(longest, item.result.timeline.maxTime), 1);
   return (
     <>
       <header className="header">
@@ -647,7 +668,13 @@ function App() {
         </div>
         {error && <p className="error">{error}</p>}
         {cards.map((item) => (
-          <Card key={item.metrics} item={item} captureEpoch={captureEpoch} revision={revisions[item.metrics] ?? 0} />
+          <Card
+            key={item.metrics}
+            maxTime={maxTime}
+            item={item}
+            captureEpoch={captureEpoch}
+            revision={revisions[item.metrics] ?? 0}
+          />
         ))}
         {!cards.length && !error && <div className="empty">Results will appear here when a benchmark completes.</div>}
       </main>
