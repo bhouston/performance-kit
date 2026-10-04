@@ -9,15 +9,27 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
-    ".": "./dist/index.js",
-    "./gpu": "./dist/gpu.js",
-    "./three": "./dist/three.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./gpu": {
+      "types": "./dist/gpu.d.ts",
+      "import": "./dist/gpu.js",
+      "default": "./dist/gpu.js"
+    },
+    "./three": {
+      "types": "./dist/three.d.ts",
+      "import": "./dist/three.js",
+      "default": "./dist/three.js"
+    }
   },
   "scripts": {
     "build": "tsc -b",
     "tsc": "tsc -b"
   },
-  "devDependencies": {
+  "dependencies": {
     "performance-kit-schema": "workspace:*"
   }
 }

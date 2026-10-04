@@ -10,10 +10,22 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
-    ".": "./dist/index.js",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
     "./schemas/*": "./schemas/*",
-    "./derive": "./dist/derive.js",
-    "./colorScales": "./dist/colorScales.js"
+    "./derive": {
+      "types": "./dist/derive.d.ts",
+      "import": "./dist/derive.js",
+      "default": "./dist/derive.js"
+    },
+    "./colorScales": {
+      "types": "./dist/colorScales.d.ts",
+      "import": "./dist/colorScales.js",
+      "default": "./dist/colorScales.js"
+    }
   },
   "scripts": {
     "build": "tsc -b",
