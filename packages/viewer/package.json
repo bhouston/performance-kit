@@ -1,0 +1,21 @@
+{
+  "name": "@performance-kit/viewer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "tsc": "tsc --noEmit"
+  },
+  "dependencies": {
+    "performance-kit-schema": "workspace:*",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.0.0"
+  }
+}

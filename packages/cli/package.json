@@ -1,0 +1,33 @@
+{
+  "name": "performance-kit",
+  "version": "0.1.0",
+  "description": "Raw renderer performance benchmarking, CLI and report server",
+  "license": "MIT",
+  "bin": {
+    "performance-kit": "dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "viewer"
+  ],
+  "type": "module",
+  "main": "dist/core.js",
+  "types": "dist/core.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.js"
+    }
+  },
+  "dependencies": {
+    "performance-kit-schema": "workspace:*",
+    "puppeteer": "^24.40.0",
+    "ulid": "^3.0.2",
+    "yargs": "^18.0.0",
+    "yargs-file-commands": "^2.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/yargs": "^17.0.35"
+  }
+}

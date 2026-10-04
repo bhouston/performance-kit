@@ -1,0 +1,225 @@
+{
+  "additionalProperties": false,
+  "type": "object",
+  "required": ["protocol", "protocolVersion", "runId", "seq", "type", "sentAt", "payload"],
+  "properties": {
+    "protocol": {
+      "const": "performance-kit",
+      "type": "string"
+    },
+    "protocolVersion": {
+      "const": 1,
+      "type": "number"
+    },
+    "runId": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "seq": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "type": {
+      "const": "runEnd",
+      "type": "string"
+    },
+    "sentAt": {
+      "minimum": 0,
+      "type": "number"
+    },
+    "payload": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": ["runEnd", "frames", "blocks", "watchdogTicks"],
+      "properties": {
+        "runStart": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "runEnd": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "frames": {
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": ["cpuStart", "cpuEnd"],
+            "properties": {
+              "cpuStart": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "cpuEnd": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "presented": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "gpuStart": {
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              },
+              "gpuEnd": {
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              },
+              "animationTime": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": ["start", "end", "source"],
+            "properties": {
+              "start": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "end": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "scripts": {
+                "type": "array",
+                "items": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": ["start", "end"],
+                  "properties": {
+                    "start": {
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    "end": {
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    "sourceURL": {
+                      "type": "string"
+                    },
+                    "invoker": {
+                      "type": "string"
+                    },
+                    "invokerType": {
+                      "type": "string"
+                    },
+                    "sourceFunctionName": {
+                      "type": "string"
+                    },
+                    "sourceCharPosition": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "source": {
+                "anyOf": [
+                  {
+                    "const": "longtask",
+                    "type": "string"
+                  },
+                  {
+                    "const": "loaf",
+                    "type": "string"
+                  },
+                  {
+                    "const": "watchdog",
+                    "type": "string"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "watchdogTicks": {
+          "type": "array",
+          "items": {
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "messages": {
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": ["type", "direction", "sentAt", "receivedAt"],
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "direction": {
+                "anyOf": [
+                  {
+                    "const": "toReporter",
+                    "type": "string"
+                  },
+                  {
+                    "const": "toHarness",
+                    "type": "string"
+                  }
+                ]
+              },
+              "sentAt": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": ["clock", "t"],
+                "properties": {
+                  "clock": {
+                    "anyOf": [
+                      {
+                        "const": "harness",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reporter",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "t": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                }
+              },
+              "receivedAt": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": ["clock", "t"],
+                "properties": {
+                  "clock": {
+                    "anyOf": [
+                      {
+                        "const": "harness",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reporter",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "t": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$id": "https://bhouston.github.io/performance-kit/schema/v1/runEnd.schema.json"
+}

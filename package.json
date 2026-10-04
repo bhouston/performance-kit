@@ -1,0 +1,46 @@
+{
+  "name": "performance-kit-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b && node scripts/emit-schemas.mjs && pnpm --filter @performance-kit/viewer build && node scripts/bundle-viewer.mjs",
+    "tsc": "tsc -b && pnpm --filter @performance-kit/viewer tsc",
+    "lint": "oxlint .",
+    "format": "oxfmt .",
+    "test": "vitest run",
+    "cli": "node packages/cli/dist/bin.js",
+    "prepare": "husky",
+    "format:check": "oxfmt --check .",
+    "test:coverage": "vitest run --coverage",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm build && changeset publish"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.8",
+    "@commitlint/cli": "^21.2.2",
+    "@commitlint/config-conventional": "^21.2.2",
+    "@types/node": "^25.6.0",
+    "@types/yargs": "^17.0.35",
+    "@vitest/coverage-v8": "^5.0.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.3.0",
+    "oxfmt": "^0.58.0",
+    "oxlint": "^1.73.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.2"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,mjs,cjs}": [
+      "oxfmt --no-error-on-unmatched-pattern",
+      "oxlint --fix --no-error-on-unmatched-pattern"
+    ],
+    "*.{json,jsonc,md,css,html,yml,yaml}": "oxfmt --no-error-on-unmatched-pattern"
+  },
+  "engines": {
+    "node": ">=26"
+  },
+  "packageManager": "pnpm@11.27.0"
+}

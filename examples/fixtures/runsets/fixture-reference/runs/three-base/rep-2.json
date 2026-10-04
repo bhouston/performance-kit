@@ -1,0 +1,482 @@
+{
+  "schemaVersion": 1,
+  "runId": "fixture-three-base-2",
+  "suiteName": "Synthetic reference fixtures",
+  "entry": {
+    "id": "three-base",
+    "name": "three-base / reference cube",
+    "labels": [
+      {
+        "key": "renderer",
+        "value": "three-base"
+      },
+      {
+        "key": "scene",
+        "value": "cube"
+      }
+    ],
+    "url": "http://127.0.0.1:4401/demo"
+  },
+  "repetition": 2,
+  "config": {
+    "durationMs": 1000,
+    "warmupMs": 200,
+    "vsync": "off"
+  },
+  "harness": {
+    "iframeCreated": 990,
+    "startSent": 1000,
+    "runSent": 2300,
+    "runEndObserved": 3310,
+    "captureSent": 2250,
+    "teardown": 3400
+  },
+  "clockSync": {
+    "samples": [
+      {
+        "t0": 995,
+        "t1": 1000,
+        "t2": 1001,
+        "t3": 996
+      },
+      {
+        "t0": 3340,
+        "t1": 3345,
+        "t2": 3346,
+        "t3": 3341
+      }
+    ]
+  },
+  "messages": [
+    {
+      "type": "run",
+      "direction": "toReporter",
+      "sentAt": {
+        "clock": "harness",
+        "t": 2300
+      },
+      "receivedAt": {
+        "clock": "reporter",
+        "t": 2305
+      }
+    }
+  ],
+  "reporter": {
+    "hello": 1005,
+    "ready": 2005,
+    "warmupStart": 2005,
+    "runStart": 2305,
+    "runEnd": 3305,
+    "frames": [
+      {
+        "cpuStart": 2100,
+        "cpuEnd": 2150
+      },
+      {
+        "cpuStart": 2305,
+        "cpuEnd": 2307,
+        "gpuStart": "0",
+        "gpuEnd": "4000000",
+        "animationTime": 0.0
+      },
+      {
+        "cpuStart": 2321,
+        "cpuEnd": 2323,
+        "gpuStart": "10000000",
+        "gpuEnd": "14000000",
+        "animationTime": 0.016
+      },
+      {
+        "cpuStart": 2337,
+        "cpuEnd": 2339,
+        "gpuStart": "20000000",
+        "gpuEnd": "24000000",
+        "animationTime": 0.032
+      },
+      {
+        "cpuStart": 2353,
+        "cpuEnd": 2355,
+        "gpuStart": "30000000",
+        "gpuEnd": "34000000",
+        "animationTime": 0.048
+      },
+      {
+        "cpuStart": 2369,
+        "cpuEnd": 2371,
+        "gpuStart": "40000000",
+        "gpuEnd": "44000000",
+        "animationTime": 0.064
+      },
+      {
+        "cpuStart": 2385,
+        "cpuEnd": 2387,
+        "gpuStart": "50000000",
+        "gpuEnd": "54000000",
+        "animationTime": 0.08
+      },
+      {
+        "cpuStart": 2401,
+        "cpuEnd": 2403,
+        "gpuStart": "60000000",
+        "gpuEnd": "64000000",
+        "animationTime": 0.096
+      },
+      {
+        "cpuStart": 2417,
+        "cpuEnd": 2419,
+        "gpuStart": "70000000",
+        "gpuEnd": "74000000",
+        "animationTime": 0.112
+      },
+      {
+        "cpuStart": 2433,
+        "cpuEnd": 2435,
+        "gpuStart": "80000000",
+        "gpuEnd": "84000000",
+        "animationTime": 0.128
+      },
+      {
+        "cpuStart": 2449,
+        "cpuEnd": 2451,
+        "gpuStart": "90000000",
+        "gpuEnd": "94000000",
+        "animationTime": 0.144
+      },
+      {
+        "cpuStart": 2465,
+        "cpuEnd": 2467,
+        "gpuStart": "100000000",
+        "gpuEnd": "104000000",
+        "animationTime": 0.16
+      },
+      {
+        "cpuStart": 2481,
+        "cpuEnd": 2483,
+        "gpuStart": "110000000",
+        "gpuEnd": "114000000",
+        "animationTime": 0.176
+      },
+      {
+        "cpuStart": 2497,
+        "cpuEnd": 2499,
+        "gpuStart": "120000000",
+        "gpuEnd": "124000000",
+        "animationTime": 0.192
+      },
+      {
+        "cpuStart": 2513,
+        "cpuEnd": 2515,
+        "gpuStart": "130000000",
+        "gpuEnd": "134000000",
+        "animationTime": 0.208
+      },
+      {
+        "cpuStart": 2529,
+        "cpuEnd": 2531,
+        "gpuStart": "140000000",
+        "gpuEnd": "144000000",
+        "animationTime": 0.224
+      },
+      {
+        "cpuStart": 2545,
+        "cpuEnd": 2547,
+        "gpuStart": "150000000",
+        "gpuEnd": "154000000",
+        "animationTime": 0.24
+      },
+      {
+        "cpuStart": 2561,
+        "cpuEnd": 2563,
+        "gpuStart": "160000000",
+        "gpuEnd": "164000000",
+        "animationTime": 0.256
+      },
+      {
+        "cpuStart": 2577,
+        "cpuEnd": 2579,
+        "gpuStart": "170000000",
+        "gpuEnd": "174000000",
+        "animationTime": 0.272
+      },
+      {
+        "cpuStart": 2593,
+        "cpuEnd": 2595,
+        "gpuStart": "180000000",
+        "gpuEnd": "184000000",
+        "animationTime": 0.288
+      },
+      {
+        "cpuStart": 2609,
+        "cpuEnd": 2611,
+        "gpuStart": "190000000",
+        "gpuEnd": "194000000",
+        "animationTime": 0.304
+      },
+      {
+        "cpuStart": 2625,
+        "cpuEnd": 2627,
+        "gpuStart": "200000000",
+        "gpuEnd": "204000000",
+        "animationTime": 0.32
+      },
+      {
+        "cpuStart": 2641,
+        "cpuEnd": 2643,
+        "gpuStart": "210000000",
+        "gpuEnd": "214000000",
+        "animationTime": 0.336
+      },
+      {
+        "cpuStart": 2657,
+        "cpuEnd": 2659,
+        "gpuStart": "220000000",
+        "gpuEnd": "224000000",
+        "animationTime": 0.352
+      },
+      {
+        "cpuStart": 2673,
+        "cpuEnd": 2675,
+        "gpuStart": "230000000",
+        "gpuEnd": "234000000",
+        "animationTime": 0.368
+      },
+      {
+        "cpuStart": 2689,
+        "cpuEnd": 2691,
+        "gpuStart": "240000000",
+        "gpuEnd": "244000000",
+        "animationTime": 0.384
+      },
+      {
+        "cpuStart": 2705,
+        "cpuEnd": 2707,
+        "gpuStart": "250000000",
+        "gpuEnd": "254000000",
+        "animationTime": 0.4
+      },
+      {
+        "cpuStart": 2721,
+        "cpuEnd": 2723,
+        "gpuStart": "260000000",
+        "gpuEnd": "264000000",
+        "animationTime": 0.416
+      },
+      {
+        "cpuStart": 2737,
+        "cpuEnd": 2739,
+        "gpuStart": "270000000",
+        "gpuEnd": "274000000",
+        "animationTime": 0.432
+      },
+      {
+        "cpuStart": 2753,
+        "cpuEnd": 2755,
+        "gpuStart": "280000000",
+        "gpuEnd": "284000000",
+        "animationTime": 0.448
+      },
+      {
+        "cpuStart": 2769,
+        "cpuEnd": 2771,
+        "gpuStart": "290000000",
+        "gpuEnd": "294000000",
+        "animationTime": 0.464
+      },
+      {
+        "cpuStart": 2785,
+        "cpuEnd": 2787,
+        "gpuStart": "300000000",
+        "gpuEnd": "304000000",
+        "animationTime": 0.48
+      },
+      {
+        "cpuStart": 2801,
+        "cpuEnd": 2803,
+        "gpuStart": "310000000",
+        "gpuEnd": "314000000",
+        "animationTime": 0.496
+      },
+      {
+        "cpuStart": 2817,
+        "cpuEnd": 2819,
+        "gpuStart": "320000000",
+        "gpuEnd": "324000000",
+        "animationTime": 0.512
+      },
+      {
+        "cpuStart": 2833,
+        "cpuEnd": 2835,
+        "gpuStart": "330000000",
+        "gpuEnd": "334000000",
+        "animationTime": 0.528
+      },
+      {
+        "cpuStart": 2849,
+        "cpuEnd": 2851,
+        "gpuStart": "340000000",
+        "gpuEnd": "344000000",
+        "animationTime": 0.544
+      },
+      {
+        "cpuStart": 2865,
+        "cpuEnd": 2867,
+        "gpuStart": "350000000",
+        "gpuEnd": "354000000",
+        "animationTime": 0.56
+      },
+      {
+        "cpuStart": 2881,
+        "cpuEnd": 2883,
+        "gpuStart": "360000000",
+        "gpuEnd": "364000000",
+        "animationTime": 0.576
+      },
+      {
+        "cpuStart": 2897,
+        "cpuEnd": 2899,
+        "gpuStart": "370000000",
+        "gpuEnd": "374000000",
+        "animationTime": 0.592
+      },
+      {
+        "cpuStart": 2913,
+        "cpuEnd": 2915,
+        "gpuStart": "380000000",
+        "gpuEnd": "384000000",
+        "animationTime": 0.608
+      },
+      {
+        "cpuStart": 2929,
+        "cpuEnd": 2931,
+        "gpuStart": "390000000",
+        "gpuEnd": "394000000",
+        "animationTime": 0.624
+      },
+      {
+        "cpuStart": 2945,
+        "cpuEnd": 2947,
+        "gpuStart": "400000000",
+        "gpuEnd": "404000000",
+        "animationTime": 0.64
+      },
+      {
+        "cpuStart": 2961,
+        "cpuEnd": 2963,
+        "gpuStart": "410000000",
+        "gpuEnd": "414000000",
+        "animationTime": 0.656
+      },
+      {
+        "cpuStart": 2977,
+        "cpuEnd": 2979,
+        "gpuStart": "420000000",
+        "gpuEnd": "424000000",
+        "animationTime": 0.672
+      },
+      {
+        "cpuStart": 2993,
+        "cpuEnd": 2995,
+        "gpuStart": "430000000",
+        "gpuEnd": "434000000",
+        "animationTime": 0.688
+      },
+      {
+        "cpuStart": 3009,
+        "cpuEnd": 3011,
+        "gpuStart": "440000000",
+        "gpuEnd": "444000000",
+        "animationTime": 0.704
+      },
+      {
+        "cpuStart": 3025,
+        "cpuEnd": 3027,
+        "gpuStart": "450000000",
+        "gpuEnd": "454000000",
+        "animationTime": 0.72
+      },
+      {
+        "cpuStart": 3041,
+        "cpuEnd": 3043,
+        "gpuStart": "460000000",
+        "gpuEnd": "464000000",
+        "animationTime": 0.736
+      },
+      {
+        "cpuStart": 3057,
+        "cpuEnd": 3059,
+        "gpuStart": "470000000",
+        "gpuEnd": "474000000",
+        "animationTime": 0.752
+      },
+      {
+        "cpuStart": 3073,
+        "cpuEnd": 3075,
+        "gpuStart": "480000000",
+        "gpuEnd": "484000000",
+        "animationTime": 0.768
+      },
+      {
+        "cpuStart": 3089,
+        "cpuEnd": 3091,
+        "gpuStart": "490000000",
+        "gpuEnd": "494000000",
+        "animationTime": 0.784
+      }
+    ],
+    "phases": [
+      {
+        "phase": "load",
+        "start": {
+          "clock": "reporter",
+          "t": 1005
+        },
+        "end": {
+          "clock": "reporter",
+          "t": 1400
+        }
+      },
+      {
+        "phase": "process",
+        "start": {
+          "clock": "reporter",
+          "t": 1420
+        },
+        "end": {
+          "clock": "reporter",
+          "t": 1700
+        }
+      },
+      {
+        "phase": "compile",
+        "start": {
+          "clock": "reporter",
+          "t": 1700
+        },
+        "end": {
+          "clock": "reporter",
+          "t": 2005
+        }
+      }
+    ],
+    "blocks": [
+      {
+        "start": 1600,
+        "end": 1800,
+        "source": "longtask"
+      }
+    ],
+    "watchdogTicks": [
+      1005,
+      1021,
+      1037,
+      1101,
+      1117,
+      1500,
+      1516,
+      1800,
+      1816,
+      2005
+    ]
+  },
+  "status": "ok"
+}

@@ -1,0 +1,58 @@
+import type { CommandModule } from 'yargs';
+import { runSuite } from '../runner.js';
+const command: CommandModule = {
+  command: 'run',
+  describe: 'Benchmark a suite and append a raw run set',
+  builder: (yargs) =>
+    yargs
+      .option('suite', { type: 'string', demandOption: true })
+      .option('out', { type: 'string', default: 'performance-results' })
+      .option('filter', {
+        type: 'array',
+        string: true,
+        describe: 'Include only entries matching every key=value label',
+      })
+      .option('headful', { type: 'boolean', default: false })
+      .option('live', { type: 'boolean', default: false })
+      .option('host', { type: 'string', default: 'localhost' })
+      .option('port', { type: 'number', default: 4400 })
+      .option('renderer-root', {
+        type: 'string',
+        describe: 'Static renderer directory served cross-site on 127.0.0.1',
+      })
+      .option('renderer-port', { type: 'number', default: 4401 })
+      .option('seed', { type: 'number' })
+      .option('repetitions', { type: 'number' })
+      .option('cooldown-ms', { type: 'number', default: 2000 })
+      .option('recycle', { type: 'number', describe: 'Recycle Chrome every N runs' })
+      .option('width', { type: 'number', default: 1920 })
+      .option('height', { type: 'number', default: 1080 })
+      .option('isolation', { choices: ['iframe', 'page'] as const, default: 'iframe' })
+      .option('allow-software', { type: 'boolean', default: false })
+      .option('executable-path', { type: 'string' })
+      .option('fail-on-error', { type: 'boolean', default: true }),
+  handler: async (args) => {
+    await runSuite({
+      suite: args.suite as string,
+      out: args.out as string,
+      filter: args.filter as string[] | undefined,
+      headful: args.headful as boolean,
+      live: args.live as boolean,
+      host: args.host as string,
+      port: args.port as number,
+      rendererRoot: args.rendererRoot as string | undefined,
+      rendererPort: args.rendererPort as number,
+      seed: args.seed as number | undefined,
+      repetitions: args.repetitions as number | undefined,
+      cooldownMs: args.cooldownMs as number,
+      recycle: args.recycle as number | undefined,
+      width: args.width as number,
+      height: args.height as number,
+      isolation: args.isolation as 'iframe' | 'page',
+      allowSoftware: args.allowSoftware as boolean,
+      executablePath: args.executablePath as string | undefined,
+      failOnError: args.failOnError as boolean,
+    });
+  },
+};
+export default command;
