@@ -24,6 +24,7 @@ const result: RunResult = {
     scene: { id: 'cube', name: 'Spinning cube' },
     url: '/cube',
   },
+  networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
   config: { durationMs: 100, vsync: 'off' },
   harness: { startSent: 1000, teardown: 1200 },
   reporter: { frames: [] },

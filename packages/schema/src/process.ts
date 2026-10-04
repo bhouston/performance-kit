@@ -157,18 +157,12 @@ export function processRun(run: RunResult): ProcessedResult {
       statistics.phaseDurations[phase.phase] = (statistics.phaseDurations[phase.phase] ?? 0) + phase.durationMs;
 
   for (const name of Object.keys(statistics.phaseDurations)) statistics.phaseDurations[name]! /= 1000;
-  const phases = full.phases.flatMap((phase, index) => {
-    const raw = run.reporter.phases![index]!;
-    if (raw.start.clock !== 'reporter' || (raw.end && raw.end.clock !== 'reporter')) return [];
-    return [
-      {
-        phase: phase.phase,
-        start: local(phase.start),
-        ...(phase.end === undefined ? {} : { end: local(phase.end) }),
-        ...optional('durationSeconds', durationSeconds(phase.durationMs)),
-      },
-    ];
-  });
+  const phases = full.phases.map((phase) => ({
+    phase: phase.phase,
+    start: local(phase.start),
+    ...(phase.end === undefined ? {} : { end: local(phase.end) }),
+    ...optional('durationSeconds', durationSeconds(phase.durationMs)),
+  }));
   const blocks = longest(full.blocks, 256).map((block) => ({
     ...block,
     sources: [...block.sources],
@@ -197,7 +191,7 @@ export function processRun(run: RunResult): ProcessedResult {
     schemaVersion: 2,
     runId: run.runId,
     screenshot: run.capture !== undefined,
-    ...(run.networkProfile ? { networkProfile: structuredClone(run.networkProfile) } : {}),
+    networkProfile: structuredClone(run.networkProfile),
     ...(run.reporter.downloads
       ? {
           downloads: run.reporter.downloads.map((report) => ({

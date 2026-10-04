@@ -22,8 +22,8 @@ export type GpuStamp = Static<typeof GpuStampSchema>;
 export const PhaseMarkSchema = object({
   id: Type.Integer({ minimum: 0 }),
   phase: Type.String({ minLength: 1 }),
-  start: StampSchema,
-  end: Type.Optional(StampSchema),
+  start: object({ clock: Type.Literal('reporter'), t: time }),
+  end: Type.Optional(object({ clock: Type.Literal('reporter'), t: time })),
 });
 export type PhaseMark = Static<typeof PhaseMarkSchema>;
 export type PhaseName = PhaseMark['phase'];
@@ -165,7 +165,7 @@ export const RunResultSchema = Type.Object(
       scene: NamedEntitySchema,
       url: Type.String(),
     }),
-    networkProfile: Type.Optional(NetworkProfileSchema),
+    networkProfile: NetworkProfileSchema,
     config: object({
       durationMs: positive,
       vsync,
@@ -212,7 +212,7 @@ export const ProcessedResultSchema = Type.Object(
     runId: Type.String({ minLength: 1 }),
     suiteName: Type.Optional(Type.String()),
     screenshot: Type.Boolean(),
-    networkProfile: Type.Optional(NetworkProfileSchema),
+    networkProfile: NetworkProfileSchema,
     downloads: Type.Optional(Type.Array(DownloadReportSchema)),
     entry: RunResultSchema.properties.entry,
     config: object({ durationSeconds: positive, vsync, phaseColors: Type.Optional(PhaseColorsSchema) }),

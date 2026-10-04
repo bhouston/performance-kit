@@ -14,6 +14,7 @@ const run: RunResult = {
   schemaVersion: 1,
   runId: 'test',
   entry: { id: 'entry', name: 'Entry', renderer: { id: 'a', name: 'A' }, scene: { id: 'b', name: 'B' }, url: '/test' },
+  networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
   config: { durationMs: 1000, vsync: 'on' },
   harness: { startSent: 0, teardown: 1000 },
   status: 'ok',

@@ -38,7 +38,7 @@ export function Bandwidth({ result, maxTime, minTime }: { result: ProcessedResul
   const unknown = result.downloads.reduce((sum, r) => sum + r.unknownSizeCount, 0);
   return (
     <section>
-      <h3>Bandwidth · {result.networkProfile?.name ?? 'profile unrecorded'}</h3>
+      <h3>Bandwidth · {result.networkProfile.name}</h3>
       <p>
         {bytes(total)} known transfer · peak {bytes(data.peakBytesPerMs * 1000)}/s · {unknown} requests with hidden
         sizes

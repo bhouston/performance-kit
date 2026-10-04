@@ -22,6 +22,7 @@ function raw(count = 5000): RunResult {
       scene: { id: 'cube', name: 'Reference cube' },
       url: '/cube',
     },
+    networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
     config: { durationMs: 60000, vsync: 'on' },
     harness: { startSent: 1000, teardown: time + 20 },
     reporter: {
@@ -130,7 +131,14 @@ describe('offline raw preprocessing', () => {
       receivedAt: { clock: 'reporter', t: 1.025 },
     });
     expect(metrics.timeline).not.toHaveProperty('discrepancies');
-    expect(keys(metrics).some((key) => key.endsWith('Ms'))).toBe(false);
+    expect(
+      keys({
+        statistics: metrics.statistics,
+        timeline: metrics.timeline,
+        timing: metrics.timing,
+        attribution: metrics.attribution,
+      }).some((key) => key.endsWith('Ms')),
+    ).toBe(false);
     expect(keys(metrics).includes('value')).toBe(false);
     expect(metrics.timing.timeUnit).toBe('epochSeconds');
   });
@@ -180,13 +188,6 @@ describe('offline raw preprocessing', () => {
     expect(metrics.timeline.ready).toBe(0.005);
     expect(metrics.timeline.frameSeconds[0]).toBe((input.reporter.frames[0]!.cpuStart - 1000) / 1000);
     expect(metrics.timeline.phases[0]).toEqual({ phase: 'load', start: 0.005, end: 0.009, durationSeconds: 0.004 });
-    input.reporter.phases![0] = {
-      id: 0,
-      phase: 'load',
-      start: { clock: 'harness', t: 1000 },
-      end: { clock: 'harness', t: 1004 },
-    };
-    expect(processRun(input).timeline.phases).toEqual([]);
   });
   it('uses shared rounded timestamps and seconds while retaining exact statistics and negative phase coordinates', () => {
     const input = raw(3);
