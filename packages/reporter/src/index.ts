@@ -29,8 +29,9 @@ export interface Reporter {
       | ArrayBuffer
       | Promise<HTMLCanvasElement | OffscreenCanvas | Blob | ArrayBuffer>,
   ): void;
-  phaseStart(phase: PhaseName): void;
-  phaseEnd(phase: PhaseName): void;
+  /** Returns an identity for overlapping phases; ending by name closes the latest open occurrence. */
+  phaseStart(phase: PhaseName): number;
+  phaseEnd(phase: PhaseName | number): void;
   ready(): void;
   frameBegin(options?: { animationTime?: number }): number;
   frameEnd(token: number): void;
@@ -65,7 +66,7 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
   let seq = 0;
   let receivedSeq = -1;
   let state: 'idle' | 'setup' | 'ready' | 'running' | 'ended' = 'idle';
-  const phases = new Map<PhaseName, PhaseMark>();
+  const phases: PhaseMark[] = [];
   const ticks: number[] = [];
   const incomingMessages: MessageLogItem[] = [];
   const blocks: BlockRecord[] = [];
@@ -116,7 +117,7 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
     if (overflow) error(new Error('Frame storage capacity exceeded; increase frameCapacity'));
     send('runEnd', {
       ...(startReceived === undefined ? {} : { startReceived }),
-      ...(runStart ? { runStart } : {}),
+      ...(runStart ? { runStart, renderStart: runStart } : {}),
       runEnd,
       frames: records(),
       blocks: blocks.slice(),
@@ -299,20 +300,26 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
       captureCallback = callback;
     },
     phaseStart(phase) {
-      if (!enabled || disposed) return;
-      const mark: PhaseMark = { phase, start: { clock: 'reporter', t: now() } };
-      phases.set(phase, mark);
-      send('phase', mark);
+      if (!enabled || disposed) return -1;
+      if (!phase.trim()) {
+        error('Phase name must not be empty');
+        return -1;
+      }
+      const id = phases.length;
+      const mark: PhaseMark = { id, phase, start: { clock: 'reporter', t: now() } };
+      phases.push(mark);
+      send('phase', { ...mark });
+      return id;
     },
     phaseEnd(phase) {
       if (!enabled || disposed) return;
-      const mark = phases.get(phase);
-      if (!mark) {
+      const mark = typeof phase === 'number' ? phases[phase] : phases.findLast((p) => p.phase === phase && !p.end);
+      if (!mark || mark.end) {
         error(`Phase ${phase} ended before start`);
         return;
       }
       mark.end = { clock: 'reporter', t: now() };
-      send('phase', mark);
+      send('phase', { ...mark });
     },
     ready() {
       if (!enabled || disposed) return;
@@ -322,7 +329,7 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
       }
       state = 'ready';
       runStart = now();
-      send('ready', { at: runStart });
+      send('ready', { at: runStart, renderStart: runStart });
     },
     frameBegin(frameOptions) {
       if (!enabled || disposed || (state !== 'ready' && state !== 'running')) return -1;

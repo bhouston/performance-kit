@@ -50,6 +50,7 @@ describe('runner lifecycle', () => {
         JSON.stringify({
           schemaVersion: 1,
           name: 'runner',
+          phaseColors: { assets: '#123456' },
           defaults: { repetitions: 1, capture: false },
           entries: [
             {
@@ -76,6 +77,7 @@ describe('runner lifecycle', () => {
       expect(launch).toHaveBeenCalledTimes(2);
       const raw = JSON.parse(await readFile(join(result.out, 'test/cube/metrics.json'), 'utf8'));
       expect(raw.environment.userAgent).toBe('pinned-test-chrome');
+      expect(raw.config.phaseColors).toEqual({ assets: '#123456' });
       expect(raw.environment.gpuAdapter).toEqual({ description: 'Real GPU' });
       expect(JSON.parse(await readFile(join(result.out, 'index.json'), 'utf8')).results).toHaveLength(2);
     } finally {

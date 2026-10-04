@@ -216,12 +216,12 @@ describe('offline raw preprocessing', () => {
       }),
     ).toBe(false);
   });
-  it('limits watchdog display to setup without changing full responsiveness statistics', () => {
+  it('keeps responsiveness observations through rendering without changing full statistics', () => {
     const input = raw();
     input.reporter.ready = 1055;
     const metrics = processRun(input);
-    expect(metrics.timeline.watchdogSeconds).toHaveLength(4);
-    expect(metrics.timeline.watchdogSeconds.every((point) => point <= metrics.timeline.ready!)).toBe(true);
+    expect(metrics.timeline.watchdogSeconds.length).toBeGreaterThan(4);
+    expect(metrics.timeline.watchdogSeconds.some((point) => point > metrics.timeline.ready!)).toBe(true);
     expect(metrics.statistics.setupBlockedSeconds).toBe(deriveRun(input).setupBlockedMs / 1000);
     delete input.reporter.ready;
     expect(processRun(input).timeline.watchdogIndices.length).toBeLessThanOrEqual(512);
@@ -269,7 +269,7 @@ describe('offline raw preprocessing', () => {
       receivedAt: { clock: 'reporter', t: 1005 + index },
     }));
     const metrics = processRun(input);
-    expect(metrics.timeline.phases).toHaveLength(128);
+    expect(metrics.timeline.phases).toHaveLength(300);
     expect(metrics.timeline.blocks).toHaveLength(256);
     expect(metrics.timeline.blocks[0]?.durationSeconds).toBe(0.005);
     expect(metrics.attribution[0]?.durationSeconds).toBe(0.005);
@@ -316,4 +316,33 @@ describe('extrema-preserving sampling', () => {
     expect(downsampleExtrema(points)[0]).not.toBe(points[0]);
     for (const limit of [0, 3, 1001, NaN, 4.5]) expect(() => downsampleExtrema(points, limit)).toThrow('Point limit');
   });
+});
+
+it('keeps arbitrary duplicate phases, explicit render start and complete-data headline metrics', () => {
+  const input = raw(3);
+  input.reporter.startReceived = 1000;
+  input.reporter.ready = 1005;
+  input.reporter.renderStart = 1020;
+  input.reporter.runStart = 1020;
+  input.reporter.frames = [1020, 1030, 1060].map((cpuStart) => ({ cpuStart, cpuEnd: cpuStart + 1 }));
+  input.reporter.runEnd = 1100;
+  input.reporter.watchdogTicks = [1000, 1016, 1096];
+  input.reporter.phases = [
+    { phase: 'assets', start: { clock: 'reporter', t: 1000 }, end: { clock: 'reporter', t: 1010 } },
+    { phase: 'assets', start: { clock: 'reporter', t: 1005 }, end: { clock: 'reporter', t: 1015 } },
+    { phase: '__proto__', start: { clock: 'reporter', t: 1015 }, end: { clock: 'reporter', t: 1018 } },
+  ];
+  input.config.phaseColors = { assets: '#123456' };
+  const result = processRun(input);
+  expect(result.timeline.phases.map((p) => p.phase)).toEqual(['assets', 'assets', '__proto__']);
+  expect(result.statistics.phaseDurations.assets).toBe(0.02);
+  expect(result.statistics.phaseDurations.__proto__).toBe(0.003);
+  expect(result.statistics.setupSeconds).toBe(0.02); // Overlaps are not added to setup time.
+  expect(result.timeline.renderStart).toBe(0.02);
+  expect(result.statistics.averageFrameSeconds).toBe(0.02);
+  expect(result.statistics.averageFps).toBe(50);
+  expect(result.statistics.maxJitterSeconds).toBe(0.01);
+  expect(result.statistics.worstResponsivenessSeconds).toBe(0.064);
+  expect(result.config.phaseColors).toEqual({ assets: '#123456' });
+  assertProcessedResult(JSON.parse(JSON.stringify(result)));
 });

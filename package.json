@@ -16,7 +16,8 @@
     "test:coverage": "vitest run --coverage",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "pnpm build && changeset publish"
+    "release": "pnpm build && changeset publish",
+    "test:viewer": "node scripts/test-viewer.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.8",
