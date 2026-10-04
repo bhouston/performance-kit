@@ -224,7 +224,7 @@ disables HTTP cache and bypasses service workers. CDP conditions are applied
 before navigation and to new request sessions, including out-of-process iframes,
 through Puppeteer’s CDP network manager before those targets resume. Conditions use uniform per-request latency and
 an approximate bandwidth cap. Profiles are stored in results, shown on cards,
-and comparison refuses groups with different conditions or unrecorded profiles.
+and comparison refuses groups with different recorded conditions.
 Run profiles into separate output directories; a profile matrix is not yet supported.
 
 The fifth card metric, Download, shows total known transferred bytes across load

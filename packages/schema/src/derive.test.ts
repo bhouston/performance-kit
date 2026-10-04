@@ -13,6 +13,7 @@ function run(step = 10): RunResult {
       scene: { id: 'cube', name: 'Cube' },
       url: 'http://localhost/',
     },
+    networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
     config: { durationMs: 100, vsync: 'off' },
     harness: { startSent: 1000, teardown: 1300, runSent: 1100, runEndObserved: 1208 },
     reporter: {
@@ -118,7 +119,7 @@ describe('read-time statistics', () => {
     expect(responsivenessColor(100)).toBe('rgb(249,115,22)');
   });
 });
-it('rejects comparisons across network conditions, including legacy unrecorded profiles', () => {
+it('rejects comparisons across network conditions, including differing recorded profiles', () => {
   const a = run(),
     b = run();
   a.networkProfile = { name: 'slow-4g', latencyMs: 150, downloadBytesPerSec: 200000, uploadBytesPerSec: 93750 };

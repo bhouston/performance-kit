@@ -38,7 +38,7 @@ The CLI processes complete observations in memory and atomically writes metrics.
 
 All stored durations use seconds. `typicalFps` and `tailFps` are derived from exact median and p95 intervals. `measuredIntervalSeconds` retains every positive measured frame interval at full precision for comparisons and viewer histogram calculations. Its length must match `statistics.intervalCount`.
 
-Timeline coordinates use client-relative seconds from `startReceived`, using zero when start was never received. Client init time is renderStart minus startReceived. No cross-clock differences are calculated. Harness phases cannot be positioned on the client timeline and are omitted from it.
+Timeline coordinates use client-relative seconds from `startReceived`, using zero when start was never received. Client init time is renderStart minus startReceived. No cross-clock differences are calculated. Phase marks require a current ID and reporter clock; network conditions are required in every result.
 
 `timing.timeUnit` is `epochSeconds`. `timing.harness` retains independent harness stamps; `timing.reporter` retains hello, startReceived, ready, runStart and runEnd when available. `timing.messages` keeps clock-tagged send/receive stamps for diagnostics without subtracting clocks.
 

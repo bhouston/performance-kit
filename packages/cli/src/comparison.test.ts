@@ -12,6 +12,7 @@ function run(id: string, scene: string, renderer: string, interval: number): Pro
       renderer: { id: renderer, name: renderer },
       scene: { id: scene, name: scene },
     },
+    networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
     config: { durationMs: 100, vsync: 'on' },
     harness: { startSent: 1000, teardown: 1200 },
     reporter: {

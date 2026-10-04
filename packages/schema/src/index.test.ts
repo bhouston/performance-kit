@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { assertSuite, validateRunResult, validateMessageToReporter, validateMessageToHarness } from './index.js';
+import {
+  assertMessageToHarness,
+  assertSuite,
+  validateRunResult,
+  validateMessageToReporter,
+  validateMessageToHarness,
+} from './index.js';
 describe('schema boundaries', () => {
   it('accepts raw minimal results and rejects derived metrics', () => {
     const result = {
@@ -12,12 +18,16 @@ describe('schema boundaries', () => {
         scene: { id: 'cube', name: 'Cube' },
         url: '/cube',
       },
+      networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
       config: { durationMs: 100, vsync: 'on' },
       harness: { startSent: 1000, teardown: 1200 },
       reporter: { frames: [{ cpuStart: 1050, cpuEnd: 1051 }] },
       status: 'ok',
     };
     expect(validateRunResult(result)).toBe(true);
+    expect(validateRunResult({ ...result, networkProfile: undefined })).toBe(false);
+    expect(validateRunResult({ ...result, clockSync: { samples: [] } })).toBe(false);
+    expect(validateRunResult({ ...result, config: { ...result.config, warmupMs: 0 } })).toBe(false);
     expect(
       validateRunResult({
         ...result,
@@ -125,6 +135,7 @@ describe('named renderer and scene references', () => {
       scene,
       url: entry.url,
     },
+    networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
     config: { durationMs: 100, vsync: 'on' },
     harness: { startSent: 1, teardown: 2 },
     reporter: { frames: [] },
@@ -163,4 +174,22 @@ describe('named renderer and scene references', () => {
     expect(validateSuite({ ...suite, entries: [{ ...entry, labels: [] }] })).toBe(false);
     expect(validateRunResult({ ...result, entry: { ...result.entry, labels: [] } })).toBe(false);
   });
+});
+
+it('rejects phases without current identity or clock', () => {
+  const phase = { id: 0, phase: 'load', start: { clock: 'reporter', t: 1 } };
+  const message = {
+    protocol: 'performance-kit',
+    protocolVersion: 1,
+    runId: 'test',
+    seq: 0,
+    type: 'phase',
+    sentAt: 1,
+    payload: phase,
+  };
+  expect(() => assertMessageToHarness(message)).not.toThrow();
+  expect(() => assertMessageToHarness({ ...message, payload: { ...phase, id: undefined } })).toThrow();
+  expect(() =>
+    assertMessageToHarness({ ...message, payload: { ...phase, start: { clock: 'harness', t: 1 } } }),
+  ).toThrow();
 });

@@ -91,14 +91,9 @@ export function deriveRun(run: RunResult) {
     phase: p.phase,
     start: p.start.t,
     end: p.end?.t,
-    durationMs: p.end && p.start.clock === p.end.clock ? p.end.t - p.start.t : undefined,
+    durationMs: p.end ? p.end.t - p.start.t : undefined,
   }));
-  const completed = phases.filter(
-    (p, index) =>
-      p.end !== undefined &&
-      run.reporter.phases![index]!.start.clock === 'reporter' &&
-      run.reporter.phases![index]!.end?.clock === 'reporter',
-  );
+  const completed = phases.filter((p) => p.end !== undefined);
   const phaseUnion = mergeBlocks(completed.map((p) => ({ start: p.start, end: p.end!, sources: [p.phase] })));
   const accounted =
     initStart === undefined || ready === undefined
@@ -174,14 +169,12 @@ export function mannWhitney(a: readonly number[], b: readonly number[]) {
   return { u, pValue: Math.min(1, 2 * tail) };
 }
 const profileKey = (r: RunResult | ProcessedResult) =>
-  r.networkProfile
-    ? JSON.stringify([
-        r.networkProfile.name,
-        r.networkProfile.latencyMs,
-        r.networkProfile.downloadBytesPerSec,
-        r.networkProfile.uploadBytesPerSec,
-      ])
-    : 'unrecorded';
+  JSON.stringify([
+    r.networkProfile.name,
+    r.networkProfile.latencyMs,
+    r.networkProfile.downloadBytesPerSec,
+    r.networkProfile.uploadBytesPerSec,
+  ]);
 export function compareRuns(
   a: readonly (RunResult | ProcessedResult)[],
   b: readonly (RunResult | ProcessedResult)[],

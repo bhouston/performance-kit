@@ -2,7 +2,7 @@
   "additionalProperties": false,
   "$id": "https://bhouston.github.io/performance-kit/schema/v1/run-result.schema.json",
   "type": "object",
-  "required": ["schemaVersion", "runId", "entry", "config", "harness", "reporter", "status"],
+  "required": ["schemaVersion", "runId", "entry", "networkProfile", "config", "harness", "reporter", "status"],
   "properties": {
     "schemaVersion": {
       "const": 1,
@@ -524,16 +524,8 @@
                 "required": ["clock", "t"],
                 "properties": {
                   "clock": {
-                    "anyOf": [
-                      {
-                        "const": "harness",
-                        "type": "string"
-                      },
-                      {
-                        "const": "reporter",
-                        "type": "string"
-                      }
-                    ]
+                    "const": "reporter",
+                    "type": "string"
                   },
                   "t": {
                     "minimum": 0,
@@ -547,16 +539,8 @@
                 "required": ["clock", "t"],
                 "properties": {
                   "clock": {
-                    "anyOf": [
-                      {
-                        "const": "harness",
-                        "type": "string"
-                      },
-                      {
-                        "const": "reporter",
-                        "type": "string"
-                      }
-                    ]
+                    "const": "reporter",
+                    "type": "string"
                   },
                   "t": {
                     "minimum": 0,

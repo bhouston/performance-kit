@@ -46,16 +46,8 @@
           "required": ["clock", "t"],
           "properties": {
             "clock": {
-              "anyOf": [
-                {
-                  "const": "harness",
-                  "type": "string"
-                },
-                {
-                  "const": "reporter",
-                  "type": "string"
-                }
-              ]
+              "const": "reporter",
+              "type": "string"
             },
             "t": {
               "minimum": 0,
@@ -69,16 +61,8 @@
           "required": ["clock", "t"],
           "properties": {
             "clock": {
-              "anyOf": [
-                {
-                  "const": "harness",
-                  "type": "string"
-                },
-                {
-                  "const": "reporter",
-                  "type": "string"
-                }
-              ]
+              "const": "reporter",
+              "type": "string"
             },
             "t": {
               "minimum": 0,

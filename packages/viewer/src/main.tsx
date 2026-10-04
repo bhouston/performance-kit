@@ -138,7 +138,7 @@ function Timeline({
         ctx.fillRect(
           x(phase.start),
           top,
-          Math.max(1, x(phase.end ?? timeline.renderStart ?? timeline.ready ?? phase.start) - x(phase.start)),
+          Math.max(1, x(phase.end ?? timeline.renderStart ?? phase.start) - x(phase.start)),
           bottom - top,
         );
       }
@@ -477,7 +477,7 @@ function Card({
                     }
                   }}
                 >
-                  {entryTitle(r)} <small> · {r.networkProfile?.name ?? 'profile unrecorded'}</small>
+                  {entryTitle(r)} <small> · {r.networkProfile.name}</small>
                 </a>
                 <button
                   className="bookmark"

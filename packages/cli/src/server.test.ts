@@ -107,6 +107,7 @@ it('dev coalesces atomic writes, handles added/removed results and README, and c
         scene: { id: 'cube', name: 'Spinning cube' },
         url: '/cube',
       },
+      networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
       config: { durationMs: 100, vsync: 'on' },
       harness: { startSent: 1, teardown: 2 },
       reporter: { frames: [] },

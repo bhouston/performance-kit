@@ -25,6 +25,7 @@ try {
         scene: { id: 'cube', name: 'Cube' },
         url: '/cube',
       },
+      networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
       config: { durationMs: 4000, vsync: 'on', phaseColors: { assets: '#8b5cf6' } },
       harness: { startSent: 1000, teardown: 6000 },
       reporter: {
