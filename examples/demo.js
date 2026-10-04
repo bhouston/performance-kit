@@ -1,5 +1,12 @@
 import { createReporter } from '/reporter/index.js';
 
+const block = (ms) => {
+  const until = performance.now() + ms;
+  while (performance.now() < until) {
+    /* deliberate jank */
+  }
+};
+
 const reporter = createReporter();
 const canvas = document.querySelector('canvas');
 let animation = 0;
@@ -12,12 +19,6 @@ reporter.onStart(async ({ params }) => {
   if (!gl) throw new Error('WebGL2 is unavailable');
   reporter.phaseEnd('load');
   reporter.phaseStart('process');
-  const block = (ms) => {
-    const until = performance.now() + ms;
-    while (performance.now() < until) {
-      /* deliberate jank */
-    }
-  };
   if (params?.janky) block(350);
   const vertices = new Float32Array([
     -1, -1, -1, 1, -1, -1, 1, 1, -1, -1, 1, -1, -1, -1, 1, 1, -1, 1, 1, 1, 1, -1, 1, 1,

@@ -74,6 +74,7 @@ it('records warmup and measured frames, responds to clock sync and rejects wrong
       },
     });
   send('syncPing', { t0: 100 }, 'https://attacker.example');
+  seq = 0; // An untrusted sender has its own sequence; it cannot consume the harness sequence.
   expect(messages.some((message) => message.type === 'syncPong')).toBe(false);
   send('syncPing', { t0: 100 });
   expect(messages.find((message) => message.type === 'syncPong')?.payload.t0).toBe(100);
@@ -90,8 +91,13 @@ it('records warmup and measured frames, responds to clock sync and rejects wrong
   expect(result.frames).toHaveLength(2);
   expect(result.frames[1]).toMatchObject({ animationTime: 2, gpuStart: '100', gpuEnd: '200' });
   expect(result.messages.map((message: { type: string }) => message.type)).toEqual(['syncPing', 'start', 'run']);
+  seq += 1; // Simulate a dropped harness message.
+  send('syncPing', { t0: 200 });
+  expect(messages.filter((message) => message.type === 'error').at(-1)?.payload.message).toContain(
+    'dropped/reordered sequence',
+  );
   reporter.fail(new Error('render failed'));
-  expect(messages.find((message) => message.type === 'error')?.payload.message).toBe('render failed');
+  expect(messages.filter((message) => message.type === 'error').at(-1)?.payload.message).toBe('render failed');
   expect(reporter.frameBegin()).toBe(-1);
   expect(messages.filter((message) => message.type === 'runEnd')).toHaveLength(1);
 });

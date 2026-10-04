@@ -178,13 +178,13 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
     if (
       message.protocolVersion !== 1 ||
       !Number.isInteger(message.seq) ||
-      (message.seq as number) <= receivedSeq ||
+      (message.seq as number) !== receivedSeq + 1 ||
       typeof message.sentAt !== 'number' ||
       !Number.isFinite(message.sentAt) ||
       !message.payload ||
       typeof message.payload !== 'object'
     )
-      throw new Error('Invalid protocol envelope or reordered sequence');
+      throw new Error('Invalid protocol envelope or dropped/reordered sequence');
     if (
       Object.keys(message).some(
         (key) => !['protocol', 'protocolVersion', 'runId', 'seq', 'type', 'sentAt', 'payload'].includes(key),
