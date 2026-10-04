@@ -1,7 +1,7 @@
 import { createServer, type ServerResponse } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { extname, resolve, sep } from 'node:path';
+import { dirname, extname, resolve, sep } from 'node:path';
 import { scanResults, viewerDirectory } from './storage.js';
 const types: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -9,6 +9,7 @@ const types: Record<string, string> = {
   '.css': 'text/css',
   '.json': 'application/json',
   '.png': 'image/png',
+  '.avif': 'image/avif',
   '.svg': 'image/svg+xml',
   '.woff2': 'font/woff2',
 };
@@ -50,7 +51,7 @@ export async function startServer(options: {
       const reporter = path.startsWith('/reporter/');
       const root = resolve(
         reporter
-          ? fileURLToPath(new URL('../../reporter/dist', import.meta.url))
+          ? dirname(fileURLToPath(import.meta.resolve('performance-kit-reporter')))
           : (options.rendererRoot ?? (isRaw ? options.out : (options.viewer ?? (await viewerDirectory())))),
       );
       let file = resolve(

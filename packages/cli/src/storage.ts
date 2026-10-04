@@ -2,6 +2,7 @@ import { mkdir, readFile, readdir, writeFile, cp, rename, stat } from 'node:fs/p
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertRunResult, assertSuite, assertManifest } from 'performance-kit-schema';
+import { encodeCapture } from './capture.js';
 import type { RunResult, Suite } from 'performance-kit-schema';
 export function safeEntryId(id: string): string {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(id) || id === '.' || id === '..') throw new Error(`Unsafe entry id: ${id}`);
@@ -23,9 +24,10 @@ export async function writeRun(root: string, result: RunResult, png?: Uint8Array
   const file = join(folder, `rep-${result.repetition}.json`);
   assertRunResult(result);
   if (png) {
-    await writeFile(join(folder, `rep-${result.repetition}.png`), png, { flag: 'wx' });
+    const avif = await encodeCapture(png);
+    await writeFile(join(folder, `rep-${result.repetition}.avif`), avif, { flag: 'wx' });
     result.capture = {
-      file: `rep-${result.repetition}.png`,
+      file: `rep-${result.repetition}.avif`,
       at: result.capture?.at ?? result.harness.captureSent ?? result.harness.teardown,
     };
   }

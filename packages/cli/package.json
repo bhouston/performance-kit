@@ -20,8 +20,10 @@
     }
   },
   "dependencies": {
+    "performance-kit-reporter": "workspace:*",
     "performance-kit-schema": "workspace:*",
     "puppeteer": "^24.40.0",
+    "sharp": "^0.35.4",
     "ulid": "^3.0.2",
     "yargs": "^18.0.0",
     "yargs-file-commands": "^2.1.0"

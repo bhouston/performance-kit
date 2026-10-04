@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import sharp from 'sharp';
+import { RESULT_AVIF } from './capture.js';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,11 +21,26 @@ describe('raw append-only storage', () => {
     const root = await mkdtemp(join(tmpdir(), 'performance-kit-'));
     try {
       const runset = join(root, 'runsets', 'test');
-      const file = await writeRun(runset, structuredClone(result), Uint8Array.of(1, 2, 3));
+      const png = await sharp({
+        create: { width: 2, height: 2, channels: 4, background: { r: 255, g: 0, b: 0, alpha: 0.5 } },
+      })
+        .png()
+        .toBuffer();
+      const file = await writeRun(runset, structuredClone(result), png);
+      const image = await sharp(join(runset, 'runs/cube/rep-1.avif')).metadata();
+      expect(image).toMatchObject({
+        format: 'heif',
+        mediaType: 'image/avif',
+        compression: 'av1',
+        width: 2,
+        height: 2,
+        hasAlpha: false,
+      });
+      expect(RESULT_AVIF).toEqual({ quality: 90, chromaSubsampling: '4:4:4' });
       expect(JSON.parse(await readFile(file, 'utf8')).status).toBe('timeout');
       const index = await scanResults(root);
       expect(index.runs[0].file).toBe('runsets/test/runs/cube/rep-1.json');
-      expect(index.runs[0].capture).toBe('runsets/test/runs/cube/rep-1.png');
+      expect(index.runs[0].capture).toBe('runsets/test/runs/cube/rep-1.avif');
       await expect(writeRun(runset, structuredClone(result))).rejects.toThrow();
       await updateLatest(root, 'test');
       expect(JSON.parse(await readFile(join(root, 'latest.json'), 'utf8')).runset).toBe('runsets/test');
