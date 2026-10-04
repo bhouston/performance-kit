@@ -35,7 +35,8 @@ export function compareGroups(
   if (options.iterations !== undefined && (!Number.isInteger(options.iterations) || options.iterations < 1))
     throw new Error('iterations must be a positive integer');
   if (options.seed !== undefined && !Number.isFinite(options.seed)) throw new Error('seed must be finite');
-  const excluded = new Set(['renderer', 'experiment', a.selectorKey, b.selectorKey]);
+  // Only the selected comparison axes may differ; retain all other workload labels.
+  const excluded = new Set([a.selectorKey, b.selectorKey]);
   const keysA = new Set(a.runs.flatMap((run) => run.entry.labels.map((label) => label.key)));
   const commonKeys = [...new Set(b.runs.flatMap((run) => run.entry.labels.map((label) => label.key)))]
     .filter((key) => keysA.has(key) && !excluded.has(key))
