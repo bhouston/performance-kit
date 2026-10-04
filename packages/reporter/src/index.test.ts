@@ -53,8 +53,12 @@ it('measures first ready frames, records receipts and rejects wrong origins', as
   vi.stubGlobal('PerformanceObserver', undefined);
   const reporter = createReporter();
   reporter.onStart(() => {
-    reporter.phaseStart('load');
-    reporter.phaseEnd('load');
+    const outer = reporter.phaseStart('assets');
+    const inner = reporter.phaseStart('assets');
+    reporter.phaseEnd(inner);
+    reporter.phaseEnd(outer);
+    reporter.phaseStart('assets');
+    reporter.phaseEnd('assets');
     reporter.ready();
   });
   await Promise.resolve();
@@ -78,6 +82,10 @@ it('measures first ready frames, records receipts and rejects wrong origins', as
   expect(messages.some((message) => message.type === 'syncPong')).toBe(false);
   send('start', { entryId: 'cube', params: {} });
   await Promise.resolve();
+  const phases = messages.filter((m) => m.type === 'phase').map((m) => m.payload);
+  expect(phases.map((p) => p.id)).toEqual([0, 1, 1, 0, 2, 2]);
+  expect(phases.slice(0, 2).every((p) => p.end === undefined)).toBe(true);
+  expect(messages.find((m) => m.type === 'ready')?.payload.renderStart).toBeDefined();
   const first = reporter.frameBegin({ animationTime: 1 });
   reporter.frameEnd(first);
   send('run', { durationMs: 20 });

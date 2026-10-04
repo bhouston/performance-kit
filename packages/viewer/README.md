@@ -29,3 +29,39 @@ Search, sorting and renderer/scene filters live in the top navigation. Every vis
 `performance-kit dev --out results/` always watches the results folder. Its index advertises `liveReload: true`, automatically connecting the viewer to Server-Sent Events. A `resultChanged` event includes `rendererId` and `sceneId`; the viewer fetches only that pair’s `metrics.json`, updates its capture and briefly highlights the affected card. A 404 removes that pair. A `readmeChanged` event refreshes only the introduction. Initial/reconnected `indexChanged` events refresh the full lightweight snapshot to recover missed changes. Reduced-motion preferences disable highlight animation.
 
 `performance-kit serve` and static reports never subscribe or offer a live toggle. Optional README Markdown is rendered without enabling raw HTML. Missing README files hide the introduction.
+
+Results are cards with four headline metrics. Use **Sort cards** and **Sort direction**
+for best-first or worst-first ordering. Sorting, search and renderer/scene filters
+are kept in the URL. Click a card to open `?result=<id>`; **All results** (or browser
+Back) returns to the list and restores its position. Hover/focus the name to copy
+its bookmark link. Touch devices always show the bookmark control.
+
+Setup time is elapsed reporter time from receiving start (or hello for legacy runs)
+until explicit render start, falling back to ready for old results. Overlapping
+phases are not added together. Average FPS is the reciprocal of the arithmetic
+mean of measured frame intervals. Max jitter is the maximum absolute deviation
+from that mean. Worst responsiveness is maximum watchdog lateness across the run.
+Missing measurements display a dash, have no grade, and sort last in either direction.
+
+The grading table lives in `src/report.ts`: setup is good below 250ms and warning
+below 500ms; jitter is good below 5ms and warning below 15ms; FPS is good at 60 or
+above and warning at 30 or above; responsiveness is good below 50ms and warning
+below 300ms (the existing chart keeps its finer delay color bands).
+
+The suite JSON accepts `phaseColors`, e.g. `{"assets": "#8b5cf6"}`. Overrides
+travel with each result through processing and static report builds. Otherwise
+phase names use a deterministic cyan/blue/violet hue (190–300°), reserving warm
+and green colors for metric grades, with fixed 65% saturation and 58% lightness.
+Duplicate phases share their color but remain separate rows in reported order.
+
+Detail charts plot milliseconds; the frame chart also labels average FPS. Blue
+average and red P95 lines show exact measured frame statistics, and the blue
+setup-done marker shows elapsed setup time. Four equal Y divisions cover the
+observed maximum using 5/10/25/50/100ms steps, extended to 250/500/1000ms and
+larger as needed. X gridlines mark whole seconds. Responsiveness uses its own
+scale rather than the previous hidden 300ms range.
+
+After `pnpm build`, run `pnpm test:viewer` for the headless browser regression
+checks (sorting/reload, navigation/back scroll, direct details, bookmarks and
+clipboard, chart labels, mobile layout and dark theme). Set
+`PERFORMANCE_KIT_CHROME_PATH` to use an existing Chrome executable.

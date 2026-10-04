@@ -40,6 +40,10 @@
           "minimum": 0,
           "type": "number"
         },
+        "renderStart": {
+          "minimum": 0,
+          "type": "number"
+        },
         "runEnd": {
           "minimum": 0,
           "type": "number"

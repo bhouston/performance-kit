@@ -14,6 +14,15 @@
     "name": {
       "type": "string"
     },
+    "phaseColors": {
+      "type": "object",
+      "patternProperties": {
+        "^(.*)$": {
+          "minLength": 1,
+          "type": "string"
+        }
+      }
+    },
     "defaults": {
       "additionalProperties": false,
       "type": "object",

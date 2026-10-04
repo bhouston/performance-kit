@@ -1,8 +1,22 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { createRoot } from 'react-dom/client';
 import { frameTimeColor, responsivenessColor } from 'performance-kit-schema/colorScales';
 import type { NamedEntity, ProcessedResult } from 'performance-kit-schema';
+import {
+  cardMetrics,
+  compareMetrics,
+  gradeMetric,
+  gradeColors,
+  metricTable,
+  phaseColor,
+  chartScale,
+  resultId,
+  readRoute,
+  type SortKey,
+  type SortDirection,
+} from './report.js';
+import { percentile } from 'performance-kit-schema';
 import './style.css';
 type Point = [seconds: number, milliseconds: number];
 type ResultReference = { renderer: NamedEntity; scene: NamedEntity; metrics: string; screenshot?: string };
@@ -22,10 +36,52 @@ function Timeline({
 }: {
   result: ProcessedResult;
   maxTime: number;
-  kind?: 'intervals' | 'cpu' | 'gpu';
+  kind?: 'intervals' | 'cpu' | 'gpu' | 'responsiveness';
 }) {
   const [hover, setHover] = useState<{ time: number; value: number; x: number; y: number }>();
   const ref = useRef<HTMLCanvasElement>(null);
+  const { timeline, statistics } = result;
+  const responsiveness = kind === 'responsiveness';
+  const samples: Point[] = useMemo(
+    () =>
+      responsiveness
+        ? timeline.watchdogSeconds
+            .slice(1)
+            .map((t, i) => [t, Math.max(0, t - timeline.watchdogSeconds[i]! - timeline.watchdogPeriodSeconds) * 1000])
+        : timeline.frameSeconds.flatMap((t, i) => {
+            const value =
+              kind === 'intervals'
+                ? timeline.frameSeconds[i + 1] === undefined
+                  ? undefined
+                  : (timeline.frameSeconds[i + 1]! - t) * 1000
+                : kind === 'cpu'
+                  ? timeline.cpuSeconds[i]
+                  : timeline.gpuSeconds[i];
+            return value === undefined || value === null || value < 0
+              ? []
+              : [[t, kind === 'intervals' ? value : value * 1000] as Point];
+          }),
+    [timeline, kind, responsiveness],
+  );
+  const measured =
+    kind === 'intervals' ? (result.measuredIntervalSeconds ?? []).map((v) => v * 1000) : samples.map((p) => p[1]);
+  const average = measured.length ? measured.reduce((a, b) => a + b, 0) / measured.length : undefined;
+  const p95 =
+    kind === 'intervals'
+      ? statistics.p95 === undefined
+        ? percentile(measured, 0.95)
+        : statistics.p95 * 1000
+      : percentile(measured, 0.95);
+  const scale = useMemo(
+    () => chartScale(samples.reduce((max, p) => Math.max(max, p[1]), Math.max(average ?? 0, p95 ?? 0))),
+    [samples, average, p95],
+  );
+  const plot = useMemo(() => {
+    if (responsiveness) return timeline.watchdogIndices.map((i) => samples[i - 1]!).filter(Boolean);
+    const times = new Set(timeline.frameIndices.map((i) => timeline.frameSeconds[i]));
+    return samples.filter(([time]) => times.has(time));
+  }, [samples, responsiveness, timeline]);
+  const timeMax = Math.max(maxTime, 0.001);
   useEffect(() => {
     const canvas = ref.current!;
     const draw = () => {
@@ -36,138 +92,105 @@ function Timeline({
       canvas.height = height * dpr;
       const ctx = canvas.getContext('2d')!;
       ctx.scale(dpr, dpr);
-      ctx.clearRect(0, 0, width, height);
-      const { timeline, statistics } = result;
-      // Exact summaries are processed offline. Adjacent elapsed times reconstruct only plotted intervals.
-      const points: Point[] = timeline.frameIndices.flatMap((i) => {
-        const time = timeline.frameSeconds[i]!;
-        const value =
-          kind === 'intervals'
-            ? timeline.frameSeconds[i + 1] === undefined
-              ? i === 0
-                ? undefined
-                : (time - timeline.frameSeconds[i - 1]!) * 1000
-              : (timeline.frameSeconds[i + 1]! - time) * 1000
-            : kind === 'cpu'
-              ? timeline.cpuSeconds[i] === null
-                ? null
-                : timeline.cpuSeconds[i]! * 1000
-              : timeline.gpuSeconds[i] === null
-                ? null
-                : timeline.gpuSeconds[i]! * 1000;
-        return value === undefined || value === null || (kind === 'intervals' && value <= 0)
-          ? []
-          : [[time, value] as Point];
-      });
-      const ceiling = Math.max(100, (statistics.p99 ?? statistics.p95 ?? 0) * 1200);
-      const clipped = points.some((point) => point[1] > ceiling);
-      const x = (t: number) => 36 + (t / maxTime) * (width - 50),
-        y = (v: number) => height - 28 - (Math.min(v, ceiling) / ceiling) * (height - 42);
+      const left = 44,
+        right = Math.max(left + 1, width - 138),
+        top = 34,
+        bottom = height - 28;
+      const x = (t: number) => left + (t / timeMax) * (right - left);
+      const y = (v: number) => bottom - (v / scale.max) * (bottom - top);
       const style = getComputedStyle(canvas),
         color = (name: string) => style.getPropertyValue(name).trim();
-      ctx.font = '10px system-ui';
-      ctx.strokeStyle = color('--chart-grid');
-      ctx.fillStyle = color('--muted-foreground');
-      let previousTick = Infinity;
-      for (const v of [0, 16.7, 33.3, 50, ceiling]) {
-        if (previousTick - y(v) < 12) continue;
-        previousTick = y(v);
-        ctx.beginPath();
-        ctx.moveTo(36, y(v));
-        ctx.lineTo(width - 14, y(v));
-        ctx.stroke();
-        ctx.fillText(`${v === ceiling && clipped ? '≥' : ''}${Math.round(v)}`, 3, y(v) + 3);
-      }
-      ctx.fillText('ms', 3, height - 8);
-      ctx.fillText('0s', 36, height - 8);
-      ctx.fillText(`${maxTime.toFixed(1)}s`, width - 43, height - 8);
+      ctx.font = '11px system-ui';
+      // Phase fills sit behind the grid and use the same colors as the phase legend.
       for (const phase of timeline.phases) {
-        ctx.fillStyle = color(`--chart-${phase.phase}`);
+        ctx.globalAlpha = 0.16;
+        ctx.fillStyle = phaseColor(phase.phase, result.config.phaseColors);
         ctx.fillRect(
           x(phase.start),
-          10,
-          Math.max(1, x(phase.end ?? timeline.ready ?? phase.start) - x(phase.start)),
-          height - 38,
+          top,
+          Math.max(1, x(phase.end ?? timeline.renderStart ?? timeline.ready ?? phase.start) - x(phase.start)),
+          bottom - top,
         );
-        ctx.fillStyle = color('--muted-foreground');
-        ctx.fillText(phase.phase, x(phase.start) + 3, 20);
       }
-      if (timeline.ready !== undefined) {
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = color('--chart-grid');
+      ctx.fillStyle = color('--muted-foreground');
+      for (const tick of scale.ticks) {
+        ctx.beginPath();
+        ctx.moveTo(left, y(tick));
+        ctx.lineTo(right, y(tick));
+        ctx.stroke();
+        ctx.textAlign = 'right';
+        ctx.fillText(`${tick}`, left - 6, y(tick) + 4);
+      }
+      ctx.textAlign = 'left';
+      ctx.fillText('ms', 4, 20);
+      for (let t = 0; t <= timeMax; t++) {
+        ctx.beginPath();
+        ctx.moveTo(x(t), top);
+        ctx.lineTo(x(t), bottom);
+        ctx.stroke();
+        ctx.textAlign = 'center';
+        ctx.fillText(`${t}`, x(t), height - 8);
+      }
+      ctx.textAlign = 'left';
+      ctx.fillText('seconds', right + 8, height - 8);
+      const metricColor = responsiveness ? responsivenessColor : frameTimeColor;
+      ctx.lineWidth = 1.5;
+      for (let i = 1; i < plot.length; i++) {
+        const a = plot[i - 1]!,
+          b = plot[i]!;
+        ctx.strokeStyle = metricColor(b[1]);
+        ctx.beginPath();
+        ctx.moveTo(x(a[0]), y(a[1]));
+        ctx.lineTo(x(b[0]), y(b[1]));
+        ctx.stroke();
+      }
+      let previousLabel: number | undefined;
+      for (const [value, label, ink] of [
+        [average, 'average', '#3b82f6'],
+        [p95, 'P95', '#ef4444'],
+      ] as const) {
+        if (value === undefined) continue;
+        ctx.strokeStyle = ink;
+        ctx.fillStyle = ink;
+        ctx.setLineDash([4, 4]);
+        ctx.lineDashOffset = label === 'P95' ? 4 : 0;
+        ctx.beginPath();
+        ctx.moveTo(left, y(value));
+        ctx.lineTo(right, y(value));
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.lineDashOffset = 0;
+        let labelY = Math.max(top + 12, y(value) - 4);
+        if (previousLabel !== undefined && Math.abs(labelY - previousLabel) < 16) labelY = previousLabel + 16;
+        previousLabel = labelY;
+        ctx.fillText(`${label} ${Number(value.toFixed(2))} ms`, right + 8, labelY);
+        if (label === 'average' && kind === 'intervals' && value > 0)
+          ctx.fillText(`${(1000 / value).toFixed(1)} fps`, right + 8, labelY - 14);
+      }
+      const renderStart = timeline.renderStart ?? timeline.ready;
+      if (renderStart !== undefined) {
+        ctx.strokeStyle = '#3b82f6';
+        ctx.fillStyle = '#3b82f6';
         ctx.setLineDash([3, 3]);
-        ctx.strokeStyle = color('--chart-ready');
         ctx.beginPath();
-        ctx.moveTo(x(timeline.ready), 8);
-        ctx.lineTo(x(timeline.ready), height - 28);
+        ctx.moveTo(x(renderStart), top);
+        ctx.lineTo(x(renderStart), bottom);
         ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle = color('--chart-ready');
-        ctx.fillText('ready', x(timeline.ready) + 4, 34);
+        ctx.fillText(
+          `setup done ${Number((renderStart * 1000).toFixed(1))} ms`,
+          Math.min(x(renderStart) + 4, width - 180),
+          18,
+        );
       }
-      if (timeline.runStart !== undefined) {
-        ctx.setLineDash([2, 4]);
-        ctx.strokeStyle = color('--chart-reference');
-        ctx.beginPath();
-        ctx.moveTo(x(timeline.runStart), 8);
-        ctx.lineTo(x(timeline.runStart), height - 28);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle = color('--muted-foreground');
-        ctx.fillText('measured', x(timeline.runStart) + 4, 46);
-      }
-      if (statistics.median !== undefined && kind === 'intervals') {
-        const reference: [number, string][] =
-          Math.abs(y(statistics.median * 1000) - y(statistics.p95! * 1000)) < 12
-            ? [[statistics.median * 1000, 'median / p95']]
-            : [
-                [statistics.median * 1000, 'median'],
-                [statistics.p95! * 1000, 'p95'],
-              ];
-        for (const [value, label] of reference) {
-          ctx.setLineDash([4, 5]);
-          ctx.strokeStyle = color('--chart-reference');
-          ctx.beginPath();
-          ctx.moveTo(x(timeline.runStart ?? timeline.frameSeconds[0] ?? 0), y(value));
-          ctx.lineTo(width - 14, y(value));
-          ctx.stroke();
-          ctx.setLineDash([]);
-          ctx.fillStyle = color('--muted-foreground');
-          ctx.textAlign = 'right';
-          ctx.fillText(label, width - 16, y(value) - 3);
-          ctx.textAlign = 'left';
-        }
-      }
-      const series = (samples: Point[], scale: (v: number) => string, setup = false) => {
-        for (let i = 1; i < samples.length; i++) {
-          const a = samples[i - 1]!,
-            b = samples[i]!;
-          const ax = x(a[0]),
-            bx = x(b[0]),
-            ay = setup ? height - 28 - (Math.min(a[1], 300) / 300) * (height - 42) : y(a[1]),
-            by = setup ? height - 28 - (Math.min(b[1], 300) / 300) * (height - 42) : y(b[1]);
-          const gradient = ctx.createLinearGradient(ax, ay, bx, by);
-          gradient.addColorStop(0, scale(a[1]));
-          gradient.addColorStop(1, scale(b[1]));
-          ctx.strokeStyle = gradient;
-          ctx.lineWidth = setup ? 1 : 1.5;
-          ctx.beginPath();
-          ctx.moveTo(ax, ay);
-          ctx.lineTo(bx, by);
-          ctx.stroke();
-        }
-      };
-      series(points, frameTimeColor);
       if (hover) {
-        ctx.strokeStyle = color('--chart-reference');
-        ctx.setLineDash([2, 3]);
+        ctx.strokeStyle = color('--foreground');
         ctx.beginPath();
-        ctx.moveTo(x(hover.time), 8);
-        ctx.lineTo(x(hover.time), height - 28);
+        ctx.moveTo(x(hover.time), top);
+        ctx.lineTo(x(hover.time), bottom);
         ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle = color('--chart-reference');
-        ctx.beginPath();
-        ctx.arc(x(hover.time), y(hover.value), 3, 0, Math.PI * 2);
-        ctx.fill();
       }
     };
     draw();
@@ -179,57 +202,34 @@ function Timeline({
       observer.disconnect();
       theme.removeEventListener('change', draw);
     };
-  }, [result, kind, maxTime, hover]);
+  }, [result, kind, timeMax, hover, average, p95, timeline, scale, plot, responsiveness]);
   return (
     <div className="timeline-container">
       <canvas
         ref={ref}
         className="timeline"
-        aria-label="Frame and setup timing timeline"
+        aria-label={`${responsiveness ? 'Responsiveness' : 'Frame rate'} timeline in milliseconds with average, P95 and setup done`}
         onMouseLeave={() => setHover(undefined)}
         onMouseMove={(event) => {
-          const canvas = event.currentTarget;
-          const rect = canvas.getBoundingClientRect();
-          const px = event.clientX - rect.left;
-          const time = ((px - 36) / (rect.width - 50)) * maxTime;
-          const frames = result.timeline.frameSeconds;
-          if (px < 36 || px > rect.width - 14 || !frames.length || time < frames[0]! || time > frames.at(-1)!) {
+          const rect = event.currentTarget.getBoundingClientRect(),
+            px = event.clientX - rect.left;
+          const time = ((px - 44) / (rect.width - 182)) * timeMax;
+          if (px < 44 || px > rect.width - 138 || !samples.length) {
             setHover(undefined);
             return;
           }
-          let low = 0,
-            high = frames.length - 1;
-          while (low < high) {
-            const middle = Math.floor((low + high) / 2);
-            if (frames[middle]! < time) low = middle + 1;
-            else high = middle;
-          }
-          const index = low > 0 && time - frames[low - 1]! < frames[low]! - time ? low - 1 : low;
-          const value =
-            kind === 'intervals'
-              ? index + 1 < frames.length
-                ? frames[index + 1]! - frames[index]!
-                : index > 0
-                  ? frames[index]! - frames[index - 1]!
-                  : null
-              : kind === 'cpu'
-                ? result.timeline.cpuSeconds[index]
-                : result.timeline.gpuSeconds[index];
-          setHover(
-            value === null || value === undefined || value < 0
-              ? undefined
-              : {
-                  time: frames[index]!,
-                  value: value * 1000,
-                  x: Math.min(px + 12, rect.width - 180),
-                  y: event.clientY - rect.top,
-                },
-          );
+          const nearest = samples.reduce((a, b) => (Math.abs(b[0] - time) < Math.abs(a[0] - time) ? b : a));
+          setHover({
+            time: nearest[0],
+            value: nearest[1],
+            x: Math.max(0, Math.min(px + 12, rect.width - 180)),
+            y: event.clientY - rect.top,
+          });
         }}
       />
       {hover && (
         <div className="timeline-tooltip" style={{ left: hover.x, top: Math.max(0, hover.y - 32) }}>
-          {duration(hover.time)} · {kind === 'intervals' ? 'Frame' : kind.toUpperCase()} {duration(hover.value / 1000)}
+          {duration(hover.time)} · {duration(hover.value / 1000)}
         </div>
       )}
     </div>
@@ -274,6 +274,7 @@ function Histogram({ values, responsiveness = false }: { values: number[]; respo
   );
 }
 function Detail({ result }: { result: ProcessedResult }) {
+  const [kind, setKind] = useState<'intervals' | 'cpu' | 'gpu'>('intervals');
   const { statistics, timeline } = result;
   const intervals =
     result.measuredIntervalSeconds ??
@@ -286,6 +287,17 @@ function Detail({ result }: { result: ProcessedResult }) {
     .map((time, index) => Math.max(0, time - timeline.watchdogSeconds[index]! - timeline.watchdogPeriodSeconds));
   return (
     <div className="detail">
+      <div className="detail-heading">
+        <h2>Frame rate · frame time in ms</h2>
+        <select aria-label="Timing series" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
+          <option value="intervals">Frame intervals</option>
+          <option value="cpu">CPU submit</option>
+          <option value="gpu">GPU cost</option>
+        </select>
+      </div>
+      <Timeline result={result} maxTime={Math.max(1, timeline.maxTime)} kind={kind} />
+      <h2>Responsiveness · lateness in ms</h2>
+      <Timeline result={result} maxTime={Math.max(1, timeline.maxTime)} kind="responsiveness" />
       <div className="detail-grid">
         <section>
           <h3>Framerate</h3>
@@ -304,7 +316,7 @@ function Detail({ result }: { result: ProcessedResult }) {
           <h3>Responsiveness</h3>
           <Histogram values={lateness} responsiveness />
           <p>
-            Setup watchdog lateness · blocked {duration(statistics.setupBlockedSeconds)} · max block{' '}
+            Watchdog lateness · blocked {duration(statistics.setupBlockedSeconds)} · max block{' '}
             {duration(statistics.setupMaxBlockSeconds)}
           </p>
         </section>
@@ -312,10 +324,16 @@ function Detail({ result }: { result: ProcessedResult }) {
           <h3>Phases</h3>
           <table>
             <tbody>
-              {Object.entries(statistics.phaseDurations).map(([phase, seconds]) => (
-                <tr key={phase}>
-                  <td>{phase}</td>
-                  <td>{duration(seconds)}</td>
+              {timeline.phases.map((phase, index) => (
+                <tr key={index}>
+                  <td>
+                    <span
+                      className="phase-swatch"
+                      style={{ background: phaseColor(phase.phase, result.config.phaseColors) }}
+                    />
+                    {phase.phase}
+                  </td>
+                  <td>{duration(phase.durationSeconds)}</td>
                 </tr>
               ))}
               <tr>
@@ -334,11 +352,13 @@ function Card({
   maxTime,
   revision = 0,
   captureEpoch = 0,
+  navigate,
 }: {
   item: RecordItem;
   maxTime: number;
   revision?: number;
   captureEpoch?: number;
+  navigate: (id: string) => void;
 }) {
   const imageRevision = Math.max(revision, captureEpoch);
   const ref = useRef<HTMLElement>(null);
@@ -349,11 +369,23 @@ function Card({
     const frame = requestAnimationFrame(() => node.classList.add('reloaded'));
     return () => cancelAnimationFrame(frame);
   }, [revision]);
-  const [open, setOpen] = useState(false),
-    r = item.result,
-    d = r.statistics;
+  const r = item.result,
+    metrics = cardMetrics(r),
+    id = resultId(r);
+  const [copied, setCopied] = useState(false);
   return (
-    <article className="card" ref={ref}>
+    <article className="card" id={id} ref={ref}>
+      <a
+        className="card-link"
+        href={detailUrl(id)}
+        aria-label={`View details for ${entryTitle(r)}`}
+        onClick={(e) => {
+          if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+            e.preventDefault();
+            navigate(id);
+          }
+        }}
+      />
       <div className="card-main">
         <div className="capture">
           {item.screenshot ? (
@@ -375,45 +407,105 @@ function Card({
         <div className="card-body">
           <div className="card-heading">
             <div>
-              <button className="entry-title" onClick={() => setOpen(!open)} aria-expanded={open}>
-                {entryTitle(r)} <span>{open ? '−' : '+'}</span>
-              </button>
+              <div className="result-name">
+                <a
+                  className="entry-title"
+                  href={detailUrl(id)}
+                  onClick={(e) => {
+                    if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                      e.preventDefault();
+                      navigate(id);
+                    }
+                  }}
+                >
+                  {entryTitle(r)}
+                </a>
+                <button
+                  className="bookmark"
+                  aria-label={`Copy link to ${entryTitle(r)}`}
+                  onClick={async () => {
+                    const url = new URL(location.href);
+                    url.hash = id;
+                    history.replaceState(history.state, '', url);
+                    try {
+                      await navigator.clipboard.writeText(url.href);
+                      setCopied(true);
+                    } catch {
+                      setCopied(false);
+                    }
+                  }}
+                >
+                  {copied ? 'Copied' : `#${id}`}
+                </button>
+              </div>
             </div>
             <div className="stats">
-              <div>
-                <small>Typical</small>
-                <strong>{fps(d.typicalFps)}</strong>
-              </div>
-              <div title={`p99 ${duration(d.p99)}`}>
-                <small>Tail · p95</small>
-                <strong>{fps(d.tailFps)}</strong>
-              </div>
-              <div>
-                <small>Jitter · IQR</small>
-                <strong>{duration(d.iqr)}</strong>
-              </div>
-              <div title={`Max setup block ${duration(d.setupMaxBlockSeconds)}`}>
-                <small>Setup</small>
-                <strong>{duration(d.setupSeconds)}</strong>
-              </div>
+              {(Object.keys(metricTable) as SortKey[]).map((key) => (
+                <div key={key}>
+                  <small>{metricTable[key].label}</small>
+                  <strong style={{ color: gradeColors[gradeMetric(key, metrics[key])] }}>
+                    {key === 'avgFrameRate'
+                      ? fps(metrics[key])
+                      : duration(metrics[key] === undefined ? undefined : metrics[key]! / 1000)}
+                  </strong>
+                </div>
+              ))}
             </div>
           </div>
           <Timeline result={r} maxTime={maxTime} />
         </div>
       </div>
       {(r.error || r.status !== 'ok') && <p className="error">{r.error?.message ?? r.status}</p>}
-      {open && <Detail result={r} />}
+      <div className="phase-legend">
+        {r.timeline.phases.map((phase, index) => (
+          <span key={index}>
+            <i className="phase-swatch" style={{ background: phaseColor(phase.phase, r.config.phaseColors) }} />
+            {phase.phase} {duration(phase.durationSeconds)}
+          </span>
+        ))}
+      </div>
     </article>
   );
 }
+function detailUrl(id: string) {
+  const url = new URL(location.href);
+  url.searchParams.set('result', id);
+  url.hash = '';
+  return url.href;
+}
 function App() {
+  const initial = readRoute(new URL(location.href));
+  const [selected, setSelected] = useState(initial.result);
+  const [direction, setDirection] = useState<SortDirection>(initial.direction);
+  const pendingScroll = useRef<number | null>(null);
+  const scrollList = useCallback(() => {
+    if (pendingScroll.current !== null) {
+      window.scrollTo(0, pendingScroll.current);
+      pendingScroll.current = null;
+    } else if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView();
+  }, []);
+  const navigate = (id: string) => {
+    history.replaceState({ ...history.state, scroll: window.scrollY }, '', location.href);
+    history.pushState({ detail: true }, '', detailUrl(id));
+    setSelected(id);
+    window.scrollTo(0, 0);
+  };
+  const back = () => {
+    if (history.state?.detail) history.back();
+    else {
+      const url = new URL(location.href);
+      url.searchParams.delete('result');
+      history.replaceState({}, '', url);
+      setSelected(null);
+    }
+  };
   const [items, setItems] = useState<RecordItem[]>([]),
     [error, setError] = useState(''),
     [preamble, setPreamble] = useState(''),
-    [query, setQuery] = useState(''),
-    [sort, setSort] = useState('name'),
-    [renderer, setRenderer] = useState(''),
-    [scene, setScene] = useState(''),
+    [query, setQuery] = useState(initial.query),
+    [sort, setSort] = useState<SortKey>(initial.sort),
+    [renderer, setRenderer] = useState(initial.renderer),
+    [scene, setScene] = useState(initial.scene),
     [live, setLive] = useState(false),
     [revisions, setRevisions] = useState<Record<string, number>>({}),
     [captureEpoch, setCaptureEpoch] = useState(0);
@@ -577,12 +669,53 @@ function App() {
         return false;
       return (!renderer || result.entry.renderer.id === renderer) && (!scene || result.entry.scene.id === scene);
     })
-    .toSorted((a, b) =>
-      sort === 'name'
-        ? entryTitle(a.result).localeCompare(entryTitle(b.result))
-        : (a.result.statistics[sort as 'median' | 'p95' | 'iqr' | 'setupSeconds'] ?? Infinity) -
-          (b.result.statistics[sort as 'median' | 'p95' | 'iqr' | 'setupSeconds'] ?? Infinity),
+    .toSorted(
+      (a, b) =>
+        compareMetrics(a.result, b.result, sort, direction) || entryTitle(a.result).localeCompare(entryTitle(b.result)),
     );
+  useEffect(() => {
+    const restoration = history.scrollRestoration;
+    history.scrollRestoration = 'manual';
+    const receive = () => {
+      const route = readRoute(new URL(location.href));
+      setSelected(route.result);
+      setSort(route.sort);
+      setDirection(route.direction);
+      setQuery(route.query);
+      setRenderer(route.renderer);
+      setScene(route.scene);
+      pendingScroll.current = history.state?.scroll ?? null;
+    };
+    const hash = () => scrollList();
+    window.addEventListener('popstate', receive);
+    window.addEventListener('hashchange', hash);
+    return () => {
+      history.scrollRestoration = restoration;
+      window.removeEventListener('popstate', receive);
+      window.removeEventListener('hashchange', hash);
+    };
+  }, [scrollList]);
+  useEffect(() => {
+    const url = new URL(location.href);
+    url.searchParams.set('sort', sort);
+    url.searchParams.set('dir', direction);
+    for (const [key, value] of [
+      ['q', query],
+      ['renderer', renderer],
+      ['scene', scene],
+    ]) {
+      if (value) url.searchParams.set(key!, value!);
+      else url.searchParams.delete(key!);
+    }
+    history.replaceState(history.state, '', url);
+  }, [sort, direction, query, renderer, scene]);
+  useEffect(() => {
+    if (!selected && items.length) {
+      const frame = requestAnimationFrame(scrollList);
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [selected, items, scrollList]);
+  const detailItem = items.find((item) => resultId(item.result) === selected);
   const maxTime = cards.reduce((longest, item) => Math.max(longest, item.result.timeline.maxTime), 1);
   return (
     <>
@@ -599,12 +732,25 @@ function App() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
-            <select aria-label="Sort cards" title="Sort" value={sort} onChange={(e) => setSort(e.target.value)}>
-              <option value="name">Name</option>
-              <option value="median">Typical FPS</option>
-              <option value="p95">Tail FPS</option>
-              <option value="iqr">Jitter</option>
-              <option value="setupSeconds">Setup time</option>
+            <select
+              aria-label="Sort cards"
+              title="Sort"
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+            >
+              {(Object.keys(metricTable) as SortKey[]).map((key) => (
+                <option key={key} value={key}>
+                  {metricTable[key].label}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="Sort direction"
+              value={direction}
+              onChange={(e) => setDirection(e.target.value as SortDirection)}
+            >
+              <option value="bestFirst">Best first</option>
+              <option value="worstFirst">Worst first</option>
             </select>
             <select
               aria-label="Renderers"
@@ -655,7 +801,7 @@ function App() {
         </div>
       </header>
       <main>
-        {preamble && (
+        {!selected && preamble && (
           <div className="preamble">
             <ReactMarkdown>{preamble}</ReactMarkdown>
           </div>
@@ -667,16 +813,36 @@ function App() {
           </div>
         </div>
         {error && <p className="error">{error}</p>}
-        {cards.map((item) => (
-          <Card
-            key={item.metrics}
-            maxTime={maxTime}
-            item={item}
-            captureEpoch={captureEpoch}
-            revision={revisions[item.metrics] ?? 0}
-          />
-        ))}
-        {!cards.length && !error && <div className="empty">Results will appear here when a benchmark completes.</div>}
+        {selected && (
+          <>
+            <button className="back-link" onClick={back}>
+              ← All results
+            </button>
+            {detailItem ? (
+              <>
+                <h1>{entryTitle(detailItem.result)}</h1>
+                {detailItem.result.error && <p className="error">{detailItem.result.error.message}</p>}
+                <Detail result={detailItem.result} />
+              </>
+            ) : (
+              <p className="empty">{items.length ? 'Result not found.' : 'Loading result…'}</p>
+            )}
+          </>
+        )}
+        {!selected &&
+          cards.map((item) => (
+            <Card
+              key={item.metrics}
+              maxTime={maxTime}
+              navigate={navigate}
+              item={item}
+              captureEpoch={captureEpoch}
+              revision={revisions[item.metrics] ?? 0}
+            />
+          ))}
+        {!selected && !cards.length && !error && (
+          <div className="empty">Results will appear here when a benchmark completes.</div>
+        )}
       </main>
       <footer>
         Website powered by{' '}

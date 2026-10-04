@@ -110,8 +110,19 @@ export async function harnessRun(input: {
         receivedAt: { clock: 'harness', t: receivedAt },
       });
       if (message.type === 'hello') reporter.hello = message.sentAt;
-      if (message.type === 'phase') (reporter.phases as unknown[]).push(message.payload);
-      if (message.type === 'ready') reporter.ready = message.payload.at;
+      if (message.type === 'phase') {
+        const phases = reporter.phases as { id?: number; phase: string; start: { t: number } }[];
+        const mark = message.payload as (typeof phases)[number];
+        const index = phases.findIndex((p) =>
+          mark.id !== undefined ? p.id === mark.id : p.phase === mark.phase && p.start.t === mark.start.t,
+        );
+        if (index === -1) phases.push(mark);
+        else phases[index] = mark;
+      }
+      if (message.type === 'ready') {
+        reporter.ready = message.payload.at;
+        reporter.renderStart = message.payload.renderStart ?? message.payload.at;
+      }
       if (message.type === 'environment') environment = { ...environment, ...message.payload };
       if (message.type === 'runEnd') {
         const { messages: receiptLogs, ...measurements } = message.payload;

@@ -89,6 +89,15 @@
               "type": "string"
             }
           ]
+        },
+        "phaseColors": {
+          "type": "object",
+          "patternProperties": {
+            "^(.*)$": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
         }
       }
     },
@@ -345,21 +354,13 @@
             "type": "object",
             "required": ["phase", "start"],
             "properties": {
+              "id": {
+                "minimum": 0,
+                "type": "integer"
+              },
               "phase": {
-                "anyOf": [
-                  {
-                    "const": "load",
-                    "type": "string"
-                  },
-                  {
-                    "const": "process",
-                    "type": "string"
-                  },
-                  {
-                    "const": "compile",
-                    "type": "string"
-                  }
-                ]
+                "minLength": 1,
+                "type": "string"
               },
               "start": {
                 "additionalProperties": false,
@@ -411,6 +412,10 @@
           }
         },
         "ready": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "renderStart": {
           "minimum": 0,
           "type": "number"
         },
