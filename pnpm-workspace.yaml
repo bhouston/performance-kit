@@ -3,3 +3,6 @@ packages:
 allowBuilds:
   esbuild: true
   puppeteer: false
+
+overrides:
+  basic-ftp: '>=6.2.1'

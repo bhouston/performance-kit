@@ -17,7 +17,7 @@ export type ClockSource = 'harness' | 'reporter' | 'gpu';
 export const GpuStampSchema = object({ clock: Type.Literal('gpu'), ns });
 export type GpuStamp = Static<typeof GpuStampSchema>;
 export const PhaseMarkSchema = object({
-  phase: Type.Union(['load', 'process', 'compile'].map((v) => Type.Literal(v))),
+  phase: Type.Union((['load', 'process', 'compile'] as const).map((v) => Type.Literal(v))),
   start: StampSchema,
   end: Type.Optional(StampSchema),
 });
@@ -35,7 +35,20 @@ export type FrameRecord = Static<typeof FrameRecordSchema>;
 export const BlockRecordSchema = object({
   start: time,
   end: time,
-  source: Type.Union(['longtask', 'loaf', 'watchdog'].map((v) => Type.Literal(v))),
+  scripts: Type.Optional(
+    Type.Array(
+      object({
+        start: time,
+        end: time,
+        sourceURL: Type.Optional(Type.String()),
+        invoker: Type.Optional(Type.String()),
+        invokerType: Type.Optional(Type.String()),
+        sourceFunctionName: Type.Optional(Type.String()),
+        sourceCharPosition: Type.Optional(Type.Number()),
+      }),
+    ),
+  ),
+  source: Type.Union((['longtask', 'loaf', 'watchdog'] as const).map((v) => Type.Literal(v))),
 });
 export type BlockRecord = Static<typeof BlockRecordSchema>;
 export const ClockSyncSampleSchema = object({ t0: time, t1: time, t2: time, t3: time });
@@ -90,7 +103,7 @@ export const EnvironmentSchema = object({
       description: Type.Optional(Type.String()),
     }),
   ),
-  api: Type.Optional(Type.Union(['webgpu', 'webgl2', 'other'].map((v) => Type.Literal(v)))),
+  api: Type.Optional(Type.Union((['webgpu', 'webgl2', 'other'] as const).map((v) => Type.Literal(v)))),
   gpuTimestampsAvailable: Type.Boolean(),
   crossOriginIsolated: Type.Boolean(),
   devicePixelRatio: positive,
@@ -136,7 +149,7 @@ export const RunResultSchema = Type.Object(
       watchdogTicks: Type.Optional(Type.Array(time)),
     }),
     capture: Type.Optional(object({ file: Type.String(), at: time })),
-    status: Type.Union(['ok', 'timeout', 'error'].map((v) => Type.Literal(v))),
+    status: Type.Union((['ok', 'timeout', 'error'] as const).map((v) => Type.Literal(v))),
     error: Type.Optional(object({ message: Type.String(), phase: Type.Optional(Type.String()) })),
   },
   {

@@ -457,6 +457,39 @@
                 "minimum": 0,
                 "type": "number"
               },
+              "scripts": {
+                "type": "array",
+                "items": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": ["start", "end"],
+                  "properties": {
+                    "start": {
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    "end": {
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    "sourceURL": {
+                      "type": "string"
+                    },
+                    "invoker": {
+                      "type": "string"
+                    },
+                    "invokerType": {
+                      "type": "string"
+                    },
+                    "sourceFunctionName": {
+                      "type": "string"
+                    },
+                    "sourceCharPosition": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
               "source": {
                 "anyOf": [
                   {

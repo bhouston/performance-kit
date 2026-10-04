@@ -37,6 +37,7 @@ export interface Reporter {
   frame(record: FrameRecord): void;
   frameGpu(token: number, timing: Pick<GpuTiming, 'gpuStart' | 'gpuEnd'>): void;
   environment(environment: Partial<Environment>): void;
+  fail(error: unknown): void;
   dispose(): void;
   gpu: {
     attach: typeof attachWebGPU;
@@ -141,6 +142,31 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
           start: performance.timeOrigin + entry.startTime,
           end: performance.timeOrigin + entry.startTime + entry.duration,
           source: type === 'longtask' ? 'longtask' : 'loaf',
+          ...('scripts' in entry && Array.isArray(entry.scripts)
+            ? {
+                scripts: entry.scripts.map(
+                  (script: {
+                    startTime: number;
+                    duration: number;
+                    sourceURL?: string;
+                    invoker?: string;
+                    invokerType?: string;
+                    sourceFunctionName?: string;
+                    sourceCharPosition?: number;
+                  }) => ({
+                    start: performance.timeOrigin + script.startTime,
+                    end: performance.timeOrigin + script.startTime + script.duration,
+                    ...(script.sourceURL ? { sourceURL: script.sourceURL } : {}),
+                    ...(script.invoker ? { invoker: script.invoker } : {}),
+                    ...(script.invokerType ? { invokerType: script.invokerType } : {}),
+                    ...(script.sourceFunctionName ? { sourceFunctionName: script.sourceFunctionName } : {}),
+                    ...(script.sourceCharPosition !== undefined
+                      ? { sourceCharPosition: script.sourceCharPosition }
+                      : {}),
+                  }),
+                ),
+              }
+            : {}),
         });
     });
     observer.observe({ type, buffered: true });
@@ -350,6 +376,12 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
     },
     environment(value) {
       send('environment', value);
+    },
+    fail(cause) {
+      if (!enabled || disposed) return;
+      error(cause);
+      finish(true);
+      api.dispose();
     },
     dispose() {
       if (disposed) return;

@@ -23,7 +23,12 @@ function Timeline({ runs, kind = 'intervals' }: { runs: RunResult[]; kind?: 'int
       const all = runs.map((r) => ({ r, d: deriveRun(r) }));
       const origins = all.map(({ r, d }) =>
         d.offsetMs === undefined
-          ? (r.reporter.hello ?? r.reporter.frames[0]?.cpuStart ?? r.harness.startSent)
+          ? (r.reporter.hello ??
+            r.reporter.phases?.[0]?.start.t ??
+            r.reporter.frames[0]?.cpuStart ??
+            r.reporter.ready ??
+            r.reporter.runStart ??
+            r.harness.startSent)
           : r.harness.startSent + d.offsetMs,
       );
       const maxTime = Math.max(
@@ -46,7 +51,7 @@ function Timeline({ runs, kind = 'intervals' }: { runs: RunResult[]; kind?: 'int
         ctx.fillText(`${Math.round(v)}`, 3, y(v) + 3);
       }
       ctx.fillText('ms', 3, height - 8);
-      ctx.fillText('0s', 36, height - 8);
+      ctx.fillText(all[0]?.d.offsetMs === undefined ? '0s · reporter-relative' : '0s', 36, height - 8);
       ctx.fillText(`${(maxTime / 1000).toFixed(1)}s`, width - 43, height - 8);
       all.forEach(({ r, d }, rep) => {
         const origin = origins[rep]!;
@@ -197,7 +202,7 @@ function Detail({ items }: { items: RecordItem[] }) {
         <section>
           <h3>Clock & startup</h3>
           <p>
-            Clock offset {number(d.offsetMs)} · hidden startup {number(d.hiddenStartupMs)}
+            Clock offset {number(d.offsetMs)} · drift {number(d.driftMs)} · hidden startup {number(d.hiddenStartupMs)}
           </p>
           <p>
             Unaccounted setup {number(d.unaccountedMs)} · blocked {number(d.setupBlockedMs)}
@@ -296,6 +301,19 @@ function Card({ items }: { items: RecordItem[] }) {
                 <small>Typical</small>
                 <strong>{number(summary.median)}</strong>
                 <em>{summary.median ? `${Math.round(1000 / summary.median)} fps` : 'no frames'}</em>
+                {summary.repetitions > 1 && (
+                  <span
+                    className="rep-range"
+                    title={`Repetition medians: ${number(summary.min)} – ${number(summary.max)}`}
+                    aria-label={`Repetition medians ${number(summary.min)} to ${number(summary.max)}`}
+                  >
+                    <i
+                      style={{
+                        left: `${summary.max === summary.min ? 50 : ((summary.median! - summary.min!) / (summary.max! - summary.min!)) * 100}%`,
+                      }}
+                    />
+                  </span>
+                )}
               </div>
               <div title={`p99 ${number(d.p99)}`}>
                 <small>Tail · p95</small>
@@ -324,7 +342,7 @@ function Card({ items }: { items: RecordItem[] }) {
 }
 function Comparison({ items }: { items: RecordItem[] }) {
   const keys = [...new Set(items.flatMap((i) => i.result.entry.labels.map((l) => l.key)))];
-  const [key, setKey] = useState(keys[0] ?? ''),
+  const [key, setKey] = useState(keys.includes('renderer') ? 'renderer' : (keys[0] ?? '')),
     [a, setA] = useState(''),
     [b, setB] = useState('');
   const values = [

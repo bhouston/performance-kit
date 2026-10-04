@@ -50,7 +50,7 @@ function render() {
 }
 ```
 
-The renderer owns its loop; the reporter bounds measurement with its own clock. Warmup records stay on disk but are excluded from run statistics. Capture happens after warmup and before the measured window. Call `reporter.environment()` with the adapter actually selected by the renderer, canvas size and API. The runner supplements browser information with host and Chrome flags. GPU helpers and the Three adapter live in the reporter's `gpu` and `three` subpaths.
+The renderer owns its loop; the reporter bounds measurement with its own clock. Warmup records stay on disk but are excluded from run statistics. Capture happens after warmup and before the measured window. Call `reporter.environment()` with the adapter actually selected by the renderer, canvas size and API. The runner supplements browser information with host and Chrome flags. GPU helpers and the Three adapter live in the reporter's `gpu` and `three` subpaths. Use `const gpu = reporter.gpu.attachThree(renderer)`, then `gpu.begin(token)` / `gpu.end()` around rendering; raw timestamps attach asynchronously to the frame. WebGPU samples span the first to last instrumented pass across a frame's submitted encoders (up to 64 passes per encoder, bounded query ring). WebGL2 exposes elapsed queries only: its endpoints use a local zero origin per sample and must never be aligned across samples or to CPU time. Disjoint queries are discarded.
 
 ## Suite and raw artifacts
 

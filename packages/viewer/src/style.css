@@ -444,3 +444,20 @@ footer {
     margin-top: 7px;
   }
 }
+.rep-range {
+  display: block;
+  position: relative;
+  margin: 7px 2px 0;
+  height: 3px;
+  border-left: 1px solid #8393ae;
+  border-right: 1px solid #8393ae;
+  background: #59667d66;
+}
+.rep-range i {
+  position: absolute;
+  top: -2px;
+  width: 3px;
+  height: 7px;
+  background: #b5adff;
+  transform: translateX(-50%);
+}

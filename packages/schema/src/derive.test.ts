@@ -92,6 +92,22 @@ describe('read-time statistics', () => {
     expect(summarizeRuns([run(10), run(20)]).unstable).toBe(true);
     expect(compareRuns([run(10)], [run(20)]).verdict).toBe('no detectable difference');
   });
+  it('keeps aborted warmup out of metrics and failed runs out of comparisons', () => {
+    const failed = run(50);
+    failed.status = 'timeout';
+    delete failed.reporter.runStart;
+    const partial = deriveRun(failed);
+    expect(partial.intervals).toEqual([]);
+    expect(partial.cpu).toEqual([]);
+    expect(partial.gpu).toEqual([]);
+    expect(summarizeRuns([failed, run(10)]).median).toBe(10);
+    expect(compareRuns([failed, run(10), run(11)], [run(20), run(21)]).verdict).toBe('faster');
+  });
+  it('validates bootstrap options', () => {
+    for (const iterations of [0, -1, NaN, Infinity, 1.5])
+      expect(() => compareRuns([run()], [run()], { iterations })).toThrow('iterations');
+    expect(() => compareRuns([run()], [run()], { seed: Infinity })).toThrow('seed');
+  });
   it('shares saturated and interpolated timing scales', () => {
     expect(frameTimeColor(16.7)).toBe('rgb(34,197,94)');
     expect(frameTimeColor(100)).toBe('rgb(239,68,68)');

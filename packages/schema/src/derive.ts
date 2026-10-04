@@ -51,9 +51,12 @@ export function deriveRun(run: RunResult) {
   const start = run.reporter.runStart;
   const end = run.reporter.runEnd;
   // Explicit measured bounds exclude warmup; minimal frame-only results use all supplied frames.
-  const frames = run.reporter.frames.filter(
-    (f) => (start === undefined || f.cpuStart >= start) && (end === undefined || f.cpuStart <= end),
-  );
+  const frames =
+    run.status !== 'ok' && start === undefined
+      ? []
+      : run.reporter.frames.filter(
+          (f) => (start === undefined || f.cpuStart >= start) && (end === undefined || f.cpuStart <= end),
+        );
   const intervals: Point[] = frames.slice(0, -1).flatMap((f, i) => {
     const value = frames[i + 1]!.cpuStart - f.cpuStart;
     return value > 0 ? [{ t: f.cpuStart, value }] : [];
@@ -153,7 +156,10 @@ export function deriveRun(run: RunResult) {
   };
 }
 export function summarizeRuns(runs: readonly RunResult[]) {
-  const medians = runs.map((r) => deriveRun(r).median).filter((v): v is number => v !== undefined);
+  const medians = runs
+    .filter((r) => r.status === 'ok')
+    .map((r) => deriveRun(r).median)
+    .filter((v): v is number => v !== undefined);
   const median = percentile(medians, 0.5),
     min = medians.length ? Math.min(...medians) : undefined,
     max = medians.length ? Math.max(...medians) : undefined;
@@ -195,11 +201,21 @@ export function compareRuns(
   b: readonly RunResult[],
   options: { seed?: number; iterations?: number } = {},
 ) {
+  const iterations = options.iterations ?? 2000;
+  if (!Number.isFinite(iterations) || !Number.isInteger(iterations) || iterations < 1)
+    throw new Error('Bootstrap iterations must be a positive finite integer');
+  if (options.seed !== undefined && !Number.isFinite(options.seed)) throw new Error('Bootstrap seed must be finite');
   if (!a.length || !b.length) throw new Error('Comparison requires runs in both groups');
   if (new Set([...a, ...b].map((r) => r.config.vsync)).size !== 1)
     throw new Error('Cannot compare different vsync modes');
-  const av = a.map((r) => deriveRun(r).intervals.map((p) => p.value)).filter((v) => v.length),
-    bv = b.map((r) => deriveRun(r).intervals.map((p) => p.value)).filter((v) => v.length);
+  const av = a
+      .filter((r) => r.status === 'ok')
+      .map((r) => deriveRun(r).intervals.map((p) => p.value))
+      .filter((v) => v.length),
+    bv = b
+      .filter((r) => r.status === 'ok')
+      .map((r) => deriveRun(r).intervals.map((p) => p.value))
+      .filter((v) => v.length);
   if (!av.length || !bv.length) throw new Error('Comparison requires measured frames');
   const medianA = percentile(av.flat(), 0.5)!,
     medianB = percentile(bv.flat(), 0.5)!;
@@ -210,10 +226,7 @@ export function compareRuns(
   };
   const sample = (groups: number[][]) =>
     Array.from({ length: groups.length }, () => groups[Math.floor(random() * groups.length)]!).flat();
-  const ratios = Array.from(
-    { length: options.iterations ?? 2000 },
-    () => percentile(sample(av), 0.5)! / percentile(sample(bv), 0.5)!,
-  );
+  const ratios = Array.from({ length: iterations }, () => percentile(sample(av), 0.5)! / percentile(sample(bv), 0.5)!);
   const confidenceInterval: [number, number] = [percentile(ratios, 0.025)!, percentile(ratios, 0.975)!];
   // Single repetitions cannot estimate run-to-run uncertainty: do not claim significance.
   const verdict =

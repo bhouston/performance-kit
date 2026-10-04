@@ -90,5 +90,8 @@ it('records warmup and measured frames, responds to clock sync and rejects wrong
   expect(result.frames).toHaveLength(2);
   expect(result.frames[1]).toMatchObject({ animationTime: 2, gpuStart: '100', gpuEnd: '200' });
   expect(result.messages.map((message: { type: string }) => message.type)).toEqual(['syncPing', 'start', 'run']);
-  reporter.dispose();
+  reporter.fail(new Error('render failed'));
+  expect(messages.find((message) => message.type === 'error')?.payload.message).toBe('render failed');
+  expect(reporter.frameBegin()).toBe(-1);
+  expect(messages.filter((message) => message.type === 'runEnd')).toHaveLength(1);
 });

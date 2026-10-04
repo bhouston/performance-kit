@@ -12,6 +12,31 @@ describe('schema boundaries', () => {
       status: 'ok',
     };
     expect(validateRunResult(result)).toBe(true);
+    expect(
+      validateRunResult({
+        ...result,
+        reporter: {
+          ...result.reporter,
+          blocks: [
+            {
+              start: 1040,
+              end: 1100,
+              source: 'loaf',
+              scripts: [{ start: 1041, end: 1099, sourceURL: 'renderer.js', invoker: 'requestAnimationFrame' }],
+            },
+          ],
+        },
+      }),
+    ).toBe(true);
+    expect(
+      validateRunResult({
+        ...result,
+        reporter: {
+          ...result.reporter,
+          blocks: [{ start: 1040, end: 1100, source: 'loaf', scripts: [{ start: 1041, end: 1099, duration: 58 }] }],
+        },
+      }),
+    ).toBe(false);
     expect(validateRunResult({ ...result, median: 16 })).toBe(false);
     expect(
       validateRunResult({

@@ -1,51 +1,44 @@
-import { stat } from 'node:fs/promises';
 import type { CommandModule } from 'yargs';
-import { compareRuns } from 'performance-kit-schema';
-import type { RunResult } from 'performance-kit-schema';
-import { scanResults } from '../storage.js';
-async function select(value: string, root: string): Promise<RunResult[]> {
-  try {
-    if ((await stat(value)).isDirectory()) return (await scanResults(value)).runs.map((run) => run.result);
-  } catch {}
-  const split = value.indexOf('=');
-  if (split < 1) throw new Error(`Comparison selector must be a directory or key=value: ${value}`);
-  return (await scanResults(root)).runs
-    .map((run) => run.result)
-    .filter((run) =>
-      run.entry.labels.some((label) => label.key === value.slice(0, split) && label.value === value.slice(split + 1)),
-    );
-}
+import { compareGroups, selectComparisonGroup } from '../comparison.js';
 const command: CommandModule = {
   command: 'compare',
-  describe: 'Compare runs using run-level bootstrap confidence intervals',
+  describe: 'Compare matching workloads using run-level bootstrap confidence intervals',
   builder: (yargs) =>
     yargs
       .option('a', { type: 'string', demandOption: true })
-      .option('b', { type: 'string', demandOption: true })
+      .option('b', { type: 'string', alias: 'baseline', demandOption: true })
       .option('out', { type: 'string', default: 'performance-results' })
       .option('seed', { type: 'number', default: 1 })
       .option('iterations', { type: 'number', default: 2000 })
       .option('json', { type: 'boolean', default: false })
       .option('regression-threshold', {
         type: 'number',
-        describe: 'Fail when A/B ratio confidently exceeds 1 + threshold (fraction)',
+        describe: 'Fail any workload whose A/B CI exceeds 1 + threshold (fraction)',
+      })
+      .check((args) => {
+        if (
+          typeof args.regressionThreshold === 'number' &&
+          (!Number.isFinite(args.regressionThreshold) || args.regressionThreshold < 0)
+        )
+          throw new Error('regression-threshold must be finite and nonnegative');
+        return true;
       }),
   handler: async (args) => {
     const [a, b] = await Promise.all([
-      select(args.a as string, args.out as string),
-      select(args.b as string, args.out as string),
+      selectComparisonGroup(args.a as string, args.out as string),
+      selectComparisonGroup(args.b as string, args.out as string),
     ]);
-    if (!a.length || !b.length) throw new Error('Both comparison groups must contain results');
-    const comparison = compareRuns(a, b, {
-      seed: args.seed as number,
-      iterations: args.iterations as number,
-    });
-    console.log(
-      args.json
-        ? JSON.stringify(comparison, null, 2)
-        : `A ${comparison.medianA.toFixed(3)} ms; B ${comparison.medianB.toFixed(3)} ms\nA/B ${comparison.ratio.toFixed(3)} (95% CI ${comparison.confidenceInterval.map((v) => v.toFixed(3)).join('–')}); ${comparison.verdict}\nMann-Whitney U=${comparison.u.toFixed(1)}, p=${comparison.pValue.toPrecision(3)}`,
-    );
-    if (typeof args.regressionThreshold === 'number' && comparison.confidenceInterval[0] > 1 + args.regressionThreshold)
+    const comparisons = compareGroups(a, b, { seed: args.seed as number, iterations: args.iterations as number });
+    if (args.json) console.log(JSON.stringify(comparisons.length === 1 ? comparisons[0] : { comparisons }, null, 2));
+    else
+      for (const comparison of comparisons)
+        console.log(
+          `${comparison.workload}\nA ${comparison.medianA.toFixed(3)} ms; B ${comparison.medianB.toFixed(3)} ms\nA/B ${comparison.ratio.toFixed(3)} (95% CI ${comparison.confidenceInterval.map((v) => v.toFixed(3)).join('–')}); ${comparison.verdict}\nMann-Whitney U=${comparison.u.toFixed(1)}, p=${comparison.pValue.toPrecision(3)}`,
+        );
+    if (
+      typeof args.regressionThreshold === 'number' &&
+      comparisons.some((comparison) => comparison.confidenceInterval[0] > 1 + (args.regressionThreshold as number))
+    )
       process.exitCode = 1;
   },
 };
