@@ -12,7 +12,7 @@ describe('schema boundaries', () => {
         scene: { id: 'cube', name: 'Cube' },
         url: '/cube',
       },
-      config: { durationMs: 100, warmupMs: 0, vsync: 'on' },
+      config: { durationMs: 100, vsync: 'on' },
       harness: { startSent: 1000, teardown: 1200 },
       reporter: { frames: [{ cpuStart: 1050, cpuEnd: 1051 }] },
       status: 'ok',
@@ -74,7 +74,7 @@ describe('schema boundaries', () => {
     };
     expect(() =>
       assertSuite({ schemaVersion: 1, name: 'test', defaults: { repetitions: 1 }, entries: [entry] }),
-    ).not.toThrow();
+    ).toThrow();
     expect(() =>
       assertSuite({ schemaVersion: 1, name: 'test', defaults: { repetitions: 2 }, entries: [entry] }),
     ).toThrow();
@@ -125,7 +125,7 @@ describe('named renderer and scene references', () => {
       scene,
       url: entry.url,
     },
-    config: { durationMs: 100, warmupMs: 0, vsync: 'on' },
+    config: { durationMs: 100, vsync: 'on' },
     harness: { startSent: 1, teardown: 2 },
     reporter: { frames: [] },
     status: 'ok',

@@ -12,8 +12,7 @@ function run(id: string, scene: string, renderer: string, interval: number): Pro
       renderer: { id: renderer, name: renderer },
       scene: { id: scene, name: scene },
     },
-    repetition: 1,
-    config: { durationMs: 100, warmupMs: 0, vsync: 'on' },
+    config: { durationMs: 100, vsync: 'on' },
     harness: { startSent: 1000, teardown: 1200 },
     reporter: {
       runStart: 1000,

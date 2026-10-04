@@ -55,7 +55,7 @@ describe('runner lifecycle', () => {
           schemaVersion: 1,
           name: 'runner',
           phaseColors: { assets: '#123456' },
-          defaults: { repetitions: 1, capture: false },
+          defaults: { capture: false },
           entries: [
             {
               id: 'cube',
@@ -98,7 +98,7 @@ describe('runner lifecycle', () => {
         JSON.stringify({
           schemaVersion: 1,
           name: 'failures',
-          defaults: { repetitions: 1, capture: false },
+          defaults: { capture: false },
           entries: [
             {
               id: 'cube',

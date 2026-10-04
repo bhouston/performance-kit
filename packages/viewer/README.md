@@ -22,9 +22,9 @@ Results use the flat layout `results/<renderer.id>/<scene.id>/`: `metrics.json` 
 }
 ```
 
-The viewer fetches the index, referenced metrics and screenshots, and an optional `README.md`. Metrics contain exact summary statistics, consecutive elapsed frame timestamps, aligned CPU/GPU costs, selected extrema indices, startup phases, blocks and script attribution. All durations use seconds. The framerate histogram is calculated from exact measured intervals; the responsiveness histogram uses consecutive setup watchdog ticks minus its 16 ms period. Bins are never persisted.
+The viewer fetches the index, referenced metrics and screenshots, and an optional `README.md`. Metrics contain exact summary statistics, consecutive elapsed frame timestamps, aligned CPU/GPU costs, selected extrema indices, startup phases, blocks and script attribution. All durations use seconds. The framerate histogram is calculated from exact measured intervals; the responsiveness histogram uses consecutive init watchdog ticks minus its 16 ms period. Bins are never persisted.
 
-Search, sorting and renderer/scene filters live in the top navigation. Every visible card timeline share the duration of the longest currently filtered timeline. Hover over a line chart to see the elapsed time and nearest frame's frame interval. The Phases table shows each startup phase's total duration and total client setup time. Clock synchronization and discrepancy tables are removed. Typical and Tail use the precomputed exact median/p95 FPS. CLI comparisons read metrics directly.
+Search, sorting and renderer/scene filters live in the top navigation. Every visible card timeline share the duration of the longest currently filtered timeline. Hover over a line chart to see the elapsed time and nearest frame's frame interval. The Init phases table shows each startup phase's total duration and total client init time. Clock synchronization and discrepancy tables are removed. Typical and Tail use the precomputed exact median/p95 FPS. CLI comparisons read metrics directly.
 
 `performance-kit dev --out results/` always watches the results folder. Its index advertises `liveReload: true`, automatically connecting the viewer to Server-Sent Events. A `resultChanged` event includes `rendererId` and `sceneId`; the viewer fetches only that pair’s `metrics.json`, updates its capture and briefly highlights the affected card. A 404 removes that pair. A `readmeChanged` event refreshes only the introduction. Initial/reconnected `indexChanged` events refresh the full lightweight snapshot to recover missed changes. Reduced-motion preferences disable highlight animation.
 
@@ -32,18 +32,18 @@ Search, sorting and renderer/scene filters live in the top navigation. Every vis
 
 Results are cards with four headline metrics. Use **Sort cards** and **Sort direction**
 for best-first or worst-first ordering. Sorting, search and renderer/scene filters
-are kept in the URL. Click a card to open `?result=<id>`; **All results** (or browser
+are kept in the URL. Click a card to open `?result=<id>`; the **Performance results** breadcrumb (or browser
 Back) returns to the list and restores its position. Hover/focus the name to copy
 its bookmark link. Touch devices always show the bookmark control.
 
-Setup time is elapsed reporter time from receiving start (or hello for legacy runs)
+Init time is elapsed reporter time from receiving start
 until explicit render start, falling back to ready for old results. Overlapping
 phases are not added together. Average FPS is the reciprocal of the arithmetic
 mean of measured frame intervals. Max jitter is the maximum absolute deviation
 from that mean. Worst responsiveness is maximum watchdog lateness across the run.
 Missing measurements display a dash, have no grade, and sort last in either direction.
 
-The grading table lives in `src/report.ts`: setup is good below 250ms and warning
+The grading table lives in `src/report.ts`: init is good below 250ms and warning
 below 500ms; jitter is good below 5ms and warning below 15ms; FPS is good at 60 or
 above and warning at 30 or above; responsiveness is good below 50ms and warning
 below 300ms (the existing chart keeps its finer delay color bands).
@@ -56,7 +56,7 @@ Duplicate phases share their color but remain separate rows in reported order.
 
 Detail charts plot milliseconds; the frame chart also labels average FPS. Blue
 average and red P95 lines show exact measured frame statistics, and the blue
-setup-done marker shows elapsed setup time. Four equal Y divisions cover the
+init-done marker shows elapsed init time. Four equal Y divisions cover the
 observed maximum using 5/10/25/50/100ms steps, extended to 250/500/1000ms and
 larger as needed. X gridlines mark whole seconds. Responsiveness uses its own
 scale rather than the previous hidden 300ms range.
@@ -65,3 +65,5 @@ After `pnpm build`, run `pnpm test:viewer` for the headless browser regression
 checks (sorting/reload, navigation/back scroll, direct details, bookmarks and
 clipboard, chart labels, mobile layout and dark theme). Set
 `PERFORMANCE_KIT_CHROME_PATH` to use an existing Chrome executable.
+
+Details show Init Responsiveness first, including its histogram, bandwidth and measured phase totals. Its Rendering section is empty. The frame chart follows with rendering statistics and an empty Init phases section. Frame reference lines appear only on frame charts; cards combine frame timing, watchdog lateness and phase shading.

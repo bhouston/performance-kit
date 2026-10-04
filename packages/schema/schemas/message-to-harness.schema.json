@@ -275,7 +275,7 @@
         "payload": {
           "additionalProperties": false,
           "type": "object",
-          "required": ["phase", "start"],
+          "required": ["id", "phase", "start"],
           "properties": {
             "id": {
               "minimum": 0,
@@ -367,7 +367,7 @@
         "payload": {
           "additionalProperties": false,
           "type": "object",
-          "required": ["at"],
+          "required": ["at", "renderStart"],
           "properties": {
             "at": {
               "minimum": 0,

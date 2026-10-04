@@ -27,17 +27,6 @@
       "additionalProperties": false,
       "type": "object",
       "properties": {
-        "warmupMs": {
-          "minimum": 0,
-          "deprecated": true,
-          "type": "number"
-        },
-        "repetitions": {
-          "minimum": 1,
-          "maximum": 1,
-          "deprecated": true,
-          "type": "integer"
-        },
         "order": {
           "anyOf": [
             {
@@ -50,15 +39,11 @@
             }
           ]
         },
-        "setupTimeoutMs": {
+        "initTimeoutMs": {
           "exclusiveMinimum": 0,
           "type": "number"
         },
         "capture": {
-          "type": "boolean"
-        },
-        "captureAfterWarmup": {
-          "deprecated": true,
           "type": "boolean"
         },
         "vsync": {
@@ -173,11 +158,6 @@
           },
           "durationMs": {
             "exclusiveMinimum": 0,
-            "type": "number"
-          },
-          "warmupMs": {
-            "minimum": 0,
-            "deprecated": true,
             "type": "number"
           },
           "params": {

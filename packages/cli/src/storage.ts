@@ -54,52 +54,25 @@ async function directories(path: string) {
   }
 }
 
-async function loadMetrics(
-  root: string,
-  prefix: string,
-  onWrite?: (file: string, contents: string) => void,
-): Promise<ProcessedResult | undefined> {
+async function loadMetrics(root: string, prefix: string): Promise<ProcessedResult | undefined> {
   let result: unknown;
   try {
     result = JSON.parse(await readFile(join(root, prefix, 'metrics.json'), 'utf8'));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
-  const version = (result as { schemaVersion?: number } | undefined)?.schemaVersion;
-  if (result && version !== 1 && version !== 2) assertProcessedResult(result);
-  if (version !== 2) {
-    let raw: unknown;
-    try {
-      raw = JSON.parse(await readFile(join(root, prefix, 'raw.json'), 'utf8'));
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-      if (result) throw new Error(`Legacy metrics require raw.json for migration: ${prefix}`, { cause: error });
-      return undefined;
-    }
-    assertRunResult(raw);
-    result = processRun(raw);
-    // Validate metadata before any writes.
-    if (raw.entry.renderer.id + '/' + raw.entry.scene.id !== prefix)
-      throw new Error(`Result metadata does not match its folder: ${prefix}`);
-    assertProcessedResult(result);
-    const contents = JSON.stringify(result);
-    onWrite?.(`${prefix}/metrics.json`, contents);
-    await atomicWrite(join(root, prefix, 'metrics.json'), contents);
-  }
+  if (result === undefined) return undefined;
   assertProcessedResult(result);
   if (result.entry.renderer.id + '/' + result.entry.scene.id !== prefix)
     throw new Error(`Result metadata does not match its folder: ${prefix}`);
   return result;
 }
-export async function scanResults(
-  root: string,
-  onWrite?: (file: string, contents: string) => void,
-): Promise<{ runs: ResultRecord[] }> {
+export async function scanResults(root: string): Promise<{ runs: ResultRecord[] }> {
   const runs: ResultRecord[] = [];
   for (const renderer of await directories(root))
     for (const scene of await directories(join(root, renderer.name))) {
       const prefix = `${renderer.name}/${scene.name}`;
-      const result = await loadMetrics(root, prefix, onWrite);
+      const result = await loadMetrics(root, prefix);
       if (result) runs.push({ result, file: `${prefix}/metrics.json` });
     }
   return { runs };
@@ -137,8 +110,7 @@ export async function processResults(
 ): Promise<ReportIndex> {
   await mkdir(root, { recursive: true });
   const index: ReportIndex = { schemaVersion: 1, results: [] };
-  for (const { result } of (await scanResults(root, onWrite)).runs)
-    index.results.push(await referenceFor(root, result));
+  for (const { result } of (await scanResults(root)).runs) index.results.push(await referenceFor(root, result));
   await saveIndex(root, index, onWrite);
   return index;
 }
@@ -149,7 +121,7 @@ export async function processResult(
   onWrite?: (file: string, contents: string) => void,
 ): Promise<void> {
   const prefix = `${safeEntryId(rendererId)}/${safeEntryId(sceneId)}`;
-  const result = await loadMetrics(root, prefix, onWrite);
+  const result = await loadMetrics(root, prefix);
   const reference = result ? await referenceFor(root, result) : undefined;
   const index = await readReportIndex(root);
   index.results = index.results.filter((item) => item.renderer.id !== rendererId || item.scene.id !== sceneId);
@@ -183,7 +155,6 @@ export async function writeRun(root: string, result: RunResult, png?: Uint8Array
   const metrics = processRun(result);
   assertProcessedResult(metrics);
   await atomicWrite(file, JSON.stringify(metrics));
-  await rm(join(folder, 'raw.json'), { force: true });
   await processResult(root, result.entry.renderer.id, result.entry.scene.id);
   return file;
 }
@@ -211,7 +182,7 @@ export async function buildReport(out: string, site: string): Promise<void> {
   for (const old of previous.results ?? []) {
     if (current.has(old.metrics)) continue;
     const folder = join(destination, safeEntryId(old.renderer.id), safeEntryId(old.scene.id));
-    for (const name of ['metrics.json', 'screenshot.avif', 'raw.json']) await rm(join(folder, name), { force: true });
+    for (const name of ['metrics.json', 'screenshot.avif']) await rm(join(folder, name), { force: true });
   }
   await mkdir(destination, { recursive: true });
   await cp(await viewerDirectory(), destination, { recursive: true });
@@ -220,7 +191,6 @@ export async function buildReport(out: string, site: string): Promise<void> {
     await cp(join(input, ref.metrics), join(destination, ref.metrics));
     if (ref.screenshot) await cp(join(input, ref.screenshot), join(destination, ref.screenshot));
     else await rm(join(destination, ref.renderer.id, ref.scene.id, 'screenshot.avif'), { force: true });
-    await rm(join(destination, ref.renderer.id, ref.scene.id, 'raw.json'), { force: true });
   }
   try {
     await cp(join(input, 'README.md'), join(destination, 'README.md'));

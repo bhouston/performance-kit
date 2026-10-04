@@ -32,7 +32,7 @@ export function mergeBlocks(blocks: readonly Block[]): Block[] {
 export function deriveRun(run: RunResult) {
   const start = run.reporter.runStart;
   const end = run.reporter.runEnd;
-  // Explicit measured bounds exclude warmup; minimal frame-only results use all supplied frames.
+  // Measured bounds exclude frames outside the run.
   const frames =
     run.status !== 'ok' && start === undefined
       ? []
@@ -73,16 +73,16 @@ export function deriveRun(run: RunResult) {
     })),
     ...watchdog.filter((p) => p.value >= 50).map((p) => ({ start: p.t - p.value, end: p.t, sources: ['watchdog'] })),
   ]);
-  const ready = run.reporter.renderStart ?? run.reporter.ready;
-  const setupStart = run.reporter.startReceived ?? run.reporter.hello;
-  const setupMs = ready !== undefined && setupStart !== undefined ? ready - setupStart : undefined;
-  const setupBlocks =
-    setupStart === undefined || ready === undefined
+  const ready = run.reporter.renderStart;
+  const initStart = run.reporter.startReceived;
+  const initMs = ready !== undefined && initStart !== undefined ? ready - initStart : undefined;
+  const initBlocks =
+    initStart === undefined || ready === undefined
       ? []
       : blocks.flatMap((b) => {
           const clipped = {
             ...b,
-            start: Math.max(b.start, setupStart),
+            start: Math.max(b.start, initStart),
             end: Math.min(b.end, ready),
           };
           return clipped.end > clipped.start ? [clipped] : [];
@@ -101,9 +101,9 @@ export function deriveRun(run: RunResult) {
   );
   const phaseUnion = mergeBlocks(completed.map((p) => ({ start: p.start, end: p.end!, sources: [p.phase] })));
   const accounted =
-    setupStart === undefined || ready === undefined
+    initStart === undefined || ready === undefined
       ? 0
-      : phaseUnion.reduce((sum, p) => sum + Math.max(0, Math.min(p.end, ready) - Math.max(p.start, setupStart)), 0);
+      : phaseUnion.reduce((sum, p) => sum + Math.max(0, Math.min(p.end, ready) - Math.max(p.start, initStart)), 0);
   return {
     intervals,
     cpu,
@@ -117,13 +117,13 @@ export function deriveRun(run: RunResult) {
     iqr,
     mad,
     fps: median ? 1000 / median : undefined,
-    setupMs,
-    unaccountedMs: setupMs === undefined ? undefined : Math.max(0, setupMs - accounted),
+    initMs,
+    unaccountedMs: initMs === undefined ? undefined : Math.max(0, initMs - accounted),
     phases,
     blocks,
     watchdog,
-    setupMaxBlockMs: Math.max(0, ...setupBlocks.map((b) => b.end - b.start)),
-    setupBlockedMs: setupBlocks.reduce((n, b) => n + b.end - b.start, 0),
+    initMaxBlockMs: Math.max(0, ...initBlocks.map((b) => b.end - b.start)),
+    initBlockedMs: initBlocks.reduce((n, b) => n + b.end - b.start, 0),
   };
 }
 export function summarizeRuns(runs: readonly (RunResult | ProcessedResult)[]) {

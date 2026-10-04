@@ -1,4 +1,4 @@
-Setup phases may have any nonempty name and may repeat. `phaseStart(name)` returns
+Init phases may have any nonempty name and may repeat. `phaseStart(name)` returns
 an identity; pass it to `phaseEnd(token)` when phases overlap, or call
 `phaseEnd(name)` to close the latest open occurrence of that name. For example:
 
@@ -7,7 +7,7 @@ const first = reporter.phaseStart('assets');
 const second = reporter.phaseStart('assets');
 reporter.phaseEnd(first);
 reporter.phaseEnd(second);
-reporter.ready(); // Explicit render start, marking the end of setup.
+reporter.ready(); // Explicit render start, marking the end of init.
 ```
 
 Phase identities match start/end protocol messages without merging duplicate

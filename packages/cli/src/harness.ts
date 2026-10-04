@@ -5,7 +5,7 @@ export async function harnessRun(input: {
   entryId: string;
   params: Record<string, unknown>;
   durationMs: number;
-  setupTimeoutMs: number;
+  initTimeoutMs: number;
   capture: boolean;
   width: number;
   height: number;
@@ -68,7 +68,7 @@ export async function harnessRun(input: {
     else iframe.contentWindow?.postMessage(message, origin);
     return sentAt;
   };
-  const wait = (type: string, timeout = input.setupTimeoutMs): Promise<Message> => {
+  const wait = (type: string, timeout = input.initTimeoutMs): Promise<Message> => {
     if (failure) return Promise.reject(failure);
     const message = pending.get(type)?.shift();
     if (message) return Promise.resolve(message);
@@ -115,17 +115,15 @@ export async function harnessRun(input: {
       }
       if (message.type === 'hello') reporter.hello = message.sentAt;
       if (message.type === 'phase') {
-        const phases = reporter.phases as { id?: number; phase: string; start: { t: number } }[];
+        const phases = reporter.phases as { id: number; phase: string; start: { t: number } }[];
         const mark = message.payload as (typeof phases)[number];
-        const index = phases.findIndex((p) =>
-          mark.id !== undefined ? p.id === mark.id : p.phase === mark.phase && p.start.t === mark.start.t,
-        );
+        const index = phases.findIndex((p) => p.id === mark.id);
         if (index === -1) phases.push(mark);
         else phases[index] = mark;
       }
       if (message.type === 'ready') {
         reporter.ready = message.payload.at;
-        reporter.renderStart = message.payload.renderStart ?? message.payload.at;
+        reporter.renderStart = message.payload.renderStart;
       }
       if (message.type === 'environment') environment = { ...environment, ...message.payload };
       if (message.type === 'runEnd') {
@@ -183,7 +181,7 @@ export async function harnessRun(input: {
     });
     await wait('ready');
     harness.runSent = send('run', { durationMs: input.durationMs });
-    await wait('runEnd', input.durationMs + input.setupTimeoutMs);
+    await wait('runEnd', input.durationMs + input.initTimeoutMs);
     if (input.capture) {
       harness.captureSent = send('capture', { mimeType: 'image/png' });
       const response = await wait('capture');

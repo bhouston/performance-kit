@@ -1,6 +1,6 @@
 import type { ProcessedResult, PhaseColorConfig } from 'performance-kit-schema';
 
-export type SortKey = 'setupTime' | 'avgFrameRate' | 'maxJitter' | 'worstResponsiveness' | 'download';
+export type SortKey = 'initTime' | 'avgFrameRate' | 'maxJitter' | 'worstResponsiveness' | 'download';
 export type SortDirection = 'bestFirst' | 'worstFirst';
 export type MetricGrade = 'good' | 'warn' | 'bad' | 'none';
 export const gradeColors: Record<MetricGrade, string> = {
@@ -11,7 +11,7 @@ export const gradeColors: Record<MetricGrade, string> = {
 };
 // Values are milliseconds except FPS and download bytes. A higher FPS is better; other metrics are lower-is-better.
 export const metricTable = {
-  setupTime: { label: 'Setup time', sign: 1, good: 250, warn: 500 },
+  initTime: { label: 'Init time', sign: 1, good: 250, warn: 500 },
   avgFrameRate: { label: 'Average frame rate', sign: -1, good: -60, warn: -30 },
   maxJitter: { label: 'Max jitter', sign: 1, good: 5, warn: 15 },
   worstResponsiveness: { label: 'Worst responsiveness', sign: 1, good: 50, warn: 300 },
@@ -28,21 +28,12 @@ export function gradeMetric(key: SortKey, value: number | undefined): MetricGrad
 const ms = (v: number | undefined) => (v === undefined ? undefined : v * 1000);
 const missing = (v: number | undefined) => v === undefined || !Number.isFinite(v);
 export function cardMetrics(result: ProcessedResult): Record<SortKey, number | undefined> {
-  const s = result.statistics,
-    values = result.measuredIntervalSeconds ?? [];
-  const mean = s.averageFrameSeconds ?? (values.length ? values.reduce((a, b) => a + b, 0) / values.length : undefined);
-  const ticks = result.timeline.watchdogSeconds;
-  const delays = ticks.slice(1).map((t, i) => Math.max(0, t - ticks[i]! - result.timeline.watchdogPeriodSeconds));
-  const jitter =
-    s.maxJitterSeconds ??
-    (mean === undefined ? undefined : values.reduce((max, v) => Math.max(max, Math.abs(v - mean)), 0));
-  const worst =
-    s.worstResponsivenessSeconds ?? (delays.length ? delays.reduce((max, v) => Math.max(max, v), 0) : undefined);
+  const s = result.statistics;
   return {
-    setupTime: ms(s.setupSeconds),
-    avgFrameRate: s.averageFps ?? (mean ? 1 / mean : undefined),
-    maxJitter: ms(jitter),
-    worstResponsiveness: ms(worst),
+    initTime: ms(s.initSeconds),
+    avgFrameRate: s.averageFps,
+    maxJitter: ms(s.maxJitterSeconds),
+    worstResponsiveness: ms(s.worstResponsivenessSeconds),
     download: result.downloads?.reduce((total, report) => total + report.totalTransferBytes, 0),
   };
 }
@@ -73,7 +64,7 @@ export function resultId(result: ProcessedResult): string {
 export function readRoute(url: URL) {
   const sort = url.searchParams.get('sort');
   return {
-    sort: sort && Object.hasOwn(metricTable, sort) ? (sort as SortKey) : ('setupTime' as SortKey),
+    sort: sort && Object.hasOwn(metricTable, sort) ? (sort as SortKey) : ('initTime' as SortKey),
     direction: url.searchParams.get('dir') === 'worstFirst' ? ('worstFirst' as const) : ('bestFirst' as const),
     result: url.searchParams.get('result'),
     query: url.searchParams.get('q') ?? '',

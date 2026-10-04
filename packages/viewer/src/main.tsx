@@ -47,22 +47,31 @@ function Timeline({
   maxTime,
   minTime = 0,
   kind = 'intervals',
+  combined = false,
 }: {
   result: ProcessedResult;
   maxTime: number;
   minTime?: number;
   kind?: 'intervals' | 'cpu' | 'gpu' | 'responsiveness';
+  combined?: boolean;
 }) {
   const [hover, setHover] = useState<{ time: number; value: number; x: number; y: number }>();
   const ref = useRef<HTMLCanvasElement>(null);
   const { timeline, statistics } = result;
   const responsiveness = kind === 'responsiveness';
+  const watchdog: Point[] = useMemo(
+    () =>
+      timeline.watchdogSeconds
+        .slice(1)
+        .map(
+          (t, i) => [t, Math.max(0, t - timeline.watchdogSeconds[i]! - timeline.watchdogPeriodSeconds) * 1000] as Point,
+        ),
+    [timeline],
+  );
   const samples: Point[] = useMemo(
     () =>
       responsiveness
-        ? timeline.watchdogSeconds
-            .slice(1)
-            .map((t, i) => [t, Math.max(0, t - timeline.watchdogSeconds[i]! - timeline.watchdogPeriodSeconds) * 1000])
+        ? watchdog
         : timeline.frameSeconds.flatMap((t, i) => {
             const value =
               kind === 'intervals'
@@ -76,20 +85,26 @@ function Timeline({
               ? []
               : [[t, kind === 'intervals' ? value : value * 1000] as Point];
           }),
-    [timeline, kind, responsiveness],
+    [timeline, kind, responsiveness, watchdog],
   );
   const measured =
-    kind === 'intervals' ? (result.measuredIntervalSeconds ?? []).map((v) => v * 1000) : samples.map((p) => p[1]);
+    kind === 'intervals' ? result.measuredIntervalSeconds.map((v) => v * 1000) : samples.map((p) => p[1]);
   const average = measured.length ? measured.reduce((a, b) => a + b, 0) / measured.length : undefined;
   const p95 =
     kind === 'intervals'
       ? statistics.p95 === undefined
-        ? percentile(measured, 0.95)
+        ? undefined
         : statistics.p95 * 1000
       : percentile(measured, 0.95);
   const scale = useMemo(
-    () => chartScale(samples.reduce((max, p) => Math.max(max, p[1]), Math.max(average ?? 0, p95 ?? 0))),
-    [samples, average, p95],
+    () =>
+      chartScale(
+        [...samples, ...(combined ? watchdog : [])].reduce(
+          (max, p) => Math.max(max, p[1]),
+          Math.max(average ?? 0, p95 ?? 0),
+        ),
+      ),
+    [samples, average, p95, combined, watchdog],
   );
   const plot = useMemo(() => {
     if (responsiveness) return timeline.watchdogIndices.map((i) => samples[i - 1]!).filter(Boolean);
@@ -117,7 +132,7 @@ function Timeline({
         color = (name: string) => style.getPropertyValue(name).trim();
       ctx.font = '11px system-ui';
       // Phase fills sit behind the grid and use the same colors as the phase legend.
-      for (const phase of timeline.phases) {
+      for (const phase of responsiveness || combined ? timeline.phases : []) {
         ctx.globalAlpha = 0.16;
         ctx.fillStyle = phaseColor(phase.phase, result.config.phaseColors);
         ctx.fillRect(
@@ -161,12 +176,26 @@ function Timeline({
         ctx.lineTo(x(b[0]), y(b[1]));
         ctx.stroke();
       }
+      if (combined) {
+        const ticks = timeline.watchdogSeconds;
+        ctx.lineWidth = 1;
+        for (let n = 1; n < timeline.watchdogIndices.length; n++) {
+          const a = timeline.watchdogIndices[n - 1]!,
+            b = timeline.watchdogIndices[n]!;
+          const delay = (i: number) => Math.max(0, ticks[i]! - ticks[i - 1]! - timeline.watchdogPeriodSeconds) * 1000;
+          ctx.strokeStyle = responsivenessColor(delay(b));
+          ctx.beginPath();
+          ctx.moveTo(x(ticks[a]!), y(delay(a)));
+          ctx.lineTo(x(ticks[b]!), y(delay(b)));
+          ctx.stroke();
+        }
+      }
       let previousLabel: number | undefined;
       for (const [value, label, ink] of [
         [average, 'average', '#3b82f6'],
         [p95, 'P95', '#ef4444'],
       ] as const) {
-        if (value === undefined) continue;
+        if (responsiveness || value === undefined) continue;
         ctx.strokeStyle = ink;
         ctx.fillStyle = ink;
         ctx.setLineDash([4, 4]);
@@ -184,8 +213,8 @@ function Timeline({
         if (label === 'average' && kind === 'intervals' && value > 0)
           ctx.fillText(`${(1000 / value).toFixed(1)} fps`, right + 8, labelY - 14);
       }
-      const renderStart = timeline.renderStart ?? timeline.ready;
-      if (renderStart !== undefined) {
+      const renderStart = timeline.renderStart;
+      if ((responsiveness || combined) && renderStart !== undefined) {
         ctx.strokeStyle = '#3b82f6';
         ctx.fillStyle = '#3b82f6';
         ctx.setLineDash([3, 3]);
@@ -195,7 +224,7 @@ function Timeline({
         ctx.stroke();
         ctx.setLineDash([]);
         ctx.fillText(
-          `setup done ${Number((renderStart * 1000).toFixed(1))} ms`,
+          `init done ${Number((renderStart * 1000).toFixed(1))} ms`,
           Math.min(x(renderStart) + 4, width - 180),
           18,
         );
@@ -217,13 +246,17 @@ function Timeline({
       observer.disconnect();
       theme.removeEventListener('change', draw);
     };
-  }, [result, kind, timeMax, minTime, hover, average, p95, timeline, scale, plot, responsiveness]);
+  }, [result, kind, timeMax, minTime, hover, average, p95, timeline, scale, plot, responsiveness, combined]);
   return (
     <div className="timeline-container">
       <canvas
         ref={ref}
         className="timeline"
-        aria-label={`${responsiveness ? 'Responsiveness' : 'Frame rate'} timeline in milliseconds with average, P95 and setup done`}
+        aria-label={
+          responsiveness
+            ? 'Init Responsiveness timeline in milliseconds'
+            : 'Frame rate timeline in milliseconds with average and P95'
+        }
         onMouseLeave={() => setHover(undefined)}
         onMouseMove={(event) => {
           const rect = event.currentTarget.getBoundingClientRect(),
@@ -292,74 +325,81 @@ function Detail({ result }: { result: ProcessedResult }) {
   const minTime = downloadMinTime(result);
   const [kind, setKind] = useState<'intervals' | 'cpu' | 'gpu'>('intervals');
   const { statistics, timeline } = result;
-  const intervals =
-    result.measuredIntervalSeconds ??
-    timeline.frameSeconds.slice(0, -1).flatMap((time, index) => {
-      const next = timeline.frameSeconds[index + 1]!;
-      return (timeline.runStart === undefined || time >= timeline.runStart) && next > time ? [next - time] : [];
-    });
+  const intervals = result.measuredIntervalSeconds;
   const lateness = timeline.watchdogSeconds
     .slice(1)
     .map((time, index) => Math.max(0, time - timeline.watchdogSeconds[index]! - timeline.watchdogPeriodSeconds));
   return (
     <div className="detail">
-      <div className="detail-heading">
-        <h2>Frame rate · frame time in ms</h2>
-        <select aria-label="Timing series" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
-          <option value="intervals">Frame intervals</option>
-          <option value="cpu">CPU submit</option>
-          <option value="gpu">GPU cost</option>
-        </select>
-      </div>
-      <Timeline result={result} minTime={minTime} maxTime={Math.max(1, timeline.maxTime)} kind={kind} />
-      <h2>Responsiveness · lateness in ms</h2>
-      <Timeline result={result} minTime={minTime} maxTime={Math.max(1, timeline.maxTime)} kind="responsiveness" />
-      <Bandwidth result={result} maxTime={Math.max(1, timeline.maxTime)} minTime={minTime} />
-      <div className="detail-grid">
-        <section>
-          <h3>Framerate</h3>
-          <Histogram values={intervals} />
-          <p>
-            Frame intervals · p99 {duration(statistics.p99)} · MAD {duration(statistics.mad)}
-          </p>
-          <p>
-            CPU median {duration(statistics.cpuMedian)} · p95 {duration(statistics.cpuP95)}
-          </p>
-          <p>
-            GPU median {duration(statistics.gpuMedian)} · p95 {duration(statistics.gpuP95)}
-          </p>
-        </section>
-        <section>
-          <h3>Responsiveness</h3>
-          <Histogram values={lateness} responsiveness />
-          <p>
-            Watchdog lateness · blocked {duration(statistics.setupBlockedSeconds)} · max block{' '}
-            {duration(statistics.setupMaxBlockSeconds)}
-          </p>
-        </section>
-        <section>
-          <h3>Phases</h3>
-          <table>
-            <tbody>
-              {timeline.phases.map((phase, index) => (
-                <tr key={index}>
-                  <td>
-                    <span
-                      className="phase-swatch"
-                      style={{ background: phaseColor(phase.phase, result.config.phaseColors) }}
-                    />
-                    {phase.phase}
-                  </td>
-                  <td>{duration(phase.durationSeconds)}</td>
+      <div className="init-detail">
+        <h2>Init Responsiveness · lateness in ms</h2>
+        <Timeline result={result} minTime={minTime} maxTime={Math.max(1, timeline.maxTime)} kind="responsiveness" />
+        <Bandwidth result={result} maxTime={Math.max(1, timeline.maxTime)} minTime={minTime} />
+        <div className="detail-grid">
+          <section>
+            <h3>Rendering</h3>
+          </section>
+          <section>
+            <h3>Responsiveness</h3>
+            <Histogram values={lateness} responsiveness />
+            <p>
+              Watchdog lateness · blocked {duration(statistics.initBlockedSeconds)} · max block{' '}
+              {duration(statistics.initMaxBlockSeconds)}
+            </p>
+          </section>
+          <section>
+            <h3>Init phases</h3>
+            <table>
+              <tbody>
+                {Object.entries(statistics.phaseDurations).map(([name, seconds]) => (
+                  <tr key={name}>
+                    <td>
+                      <span
+                        className="phase-swatch"
+                        style={{ background: phaseColor(name, result.config.phaseColors) }}
+                      />
+                      {name}
+                    </td>
+                    <td>{duration(seconds)}</td>
+                  </tr>
+                ))}
+                <tr>
+                  <th scope="row">Total init</th>
+                  <td>{duration(statistics.initSeconds)}</td>
                 </tr>
-              ))}
-              <tr>
-                <th scope="row">Total setup</th>
-                <td>{duration(statistics.setupSeconds)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
+              </tbody>
+            </table>
+          </section>
+        </div>
+      </div>
+      <div className="frame-detail">
+        <div className="detail-heading">
+          <h2>Frame rate · frame time in ms</h2>
+          <select aria-label="Timing series" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
+            <option value="intervals">Frame intervals</option>
+            <option value="cpu">CPU submit</option>
+            <option value="gpu">GPU cost</option>
+          </select>
+        </div>
+        <Timeline result={result} minTime={minTime} maxTime={Math.max(1, timeline.maxTime)} kind={kind} />
+        <div className="detail-grid">
+          <section>
+            <h3>Rendering</h3>
+            <Histogram values={intervals} />
+            <p>
+              Frame intervals · p99 {duration(statistics.p99)} · MAD {duration(statistics.mad)}
+            </p>
+            <p>
+              CPU median {duration(statistics.cpuMedian)} · p95 {duration(statistics.cpuP95)}
+            </p>
+            <p>
+              GPU median {duration(statistics.gpuMedian)} · p95 {duration(statistics.gpuP95)}
+            </p>
+          </section>
+          <section>
+            <h3>Init phases</h3>
+          </section>
+        </div>
       </div>
     </div>
   );
@@ -482,20 +522,26 @@ function Card({
               ))}
             </div>
           </div>
-          <Timeline result={r} maxTime={maxTime} minTime={minTime} />
+          <Timeline result={r} maxTime={maxTime} minTime={minTime} combined />
         </div>
       </div>
       {(r.error || r.status !== 'ok') && <p className="error">{r.error?.message ?? r.status}</p>}
       <div className="phase-legend">
-        {r.timeline.phases.map((phase, index) => (
-          <span key={index}>
-            <i className="phase-swatch" style={{ background: phaseColor(phase.phase, r.config.phaseColors) }} />
-            {phase.phase} {duration(phase.durationSeconds)}
+        {Object.entries(r.statistics.phaseDurations).map(([name, seconds]) => (
+          <span key={name}>
+            <i className="phase-swatch" style={{ background: phaseColor(name, r.config.phaseColors) }} />
+            {name} {duration(seconds)}
           </span>
         ))}
       </div>
     </article>
   );
+}
+function listUrl() {
+  const url = new URL(location.href);
+  url.searchParams.delete('result');
+  url.hash = '';
+  return url.href;
 }
 function detailUrl(id: string) {
   const url = new URL(location.href);
@@ -752,9 +798,36 @@ function App() {
     <>
       <header className="header">
         <div className="header-inner">
-          <a className="brand" href="./">
-            Performance results
-          </a>
+          <nav className="breadcrumbs" aria-label="Breadcrumb">
+            <ol>
+              <li>
+                {selected ? (
+                  <a
+                    className="brand"
+                    href={listUrl()}
+                    onClick={(e) => {
+                      if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                        e.preventDefault();
+                        back();
+                      }
+                    }}
+                  >
+                    Performance results
+                  </a>
+                ) : (
+                  <span className="brand" aria-current="page">
+                    Performance results
+                  </span>
+                )}
+              </li>
+              {selected && (
+                <>
+                  <li aria-hidden="true">›</li>
+                  <li aria-current="page">{detailItem ? entryTitle(detailItem.result) : 'Result'}</li>
+                </>
+              )}
+            </ol>
+          </nav>
           <nav className="header-controls" aria-label="Report controls">
             <input
               aria-label="Search entries"
@@ -846,9 +919,6 @@ function App() {
         {error && <p className="error">{error}</p>}
         {selected && (
           <>
-            <button className="back-link" onClick={back}>
-              ← All results
-            </button>
             {detailItem ? (
               <>
                 <h1>{entryTitle(detailItem.result)}</h1>

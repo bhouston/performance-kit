@@ -440,8 +440,8 @@
         "intervalCount",
         "cpuSampleCount",
         "gpuSampleCount",
-        "setupMaxBlockSeconds",
-        "setupBlockedSeconds",
+        "initMaxBlockSeconds",
+        "initBlockedSeconds",
         "phaseDurations"
       ],
       "properties": {
@@ -482,16 +482,16 @@
         "tailFps": {
           "type": "number"
         },
-        "setupSeconds": {
+        "initSeconds": {
           "type": "number"
         },
         "unaccountedSeconds": {
           "type": "number"
         },
-        "setupMaxBlockSeconds": {
+        "initMaxBlockSeconds": {
           "type": "number"
         },
-        "setupBlockedSeconds": {
+        "initBlockedSeconds": {
           "type": "number"
         },
         "cpuMedian": {
