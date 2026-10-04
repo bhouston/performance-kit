@@ -5,7 +5,9 @@ const bytes = humanizeBytes;
 export function Bandwidth({ result, maxTime, minTime }: { result: ProcessedResult; maxTime: number; minTime: number }) {
   const ref = useRef<SVGSVGElement>(null);
   const [width, setWidth] = useState(1000);
+  const visible = result.downloads !== undefined;
   useEffect(() => {
+    if (!visible) return;
     const node = ref.current;
     if (!node) return;
     const resize = () => setWidth(node.clientWidth);
@@ -13,7 +15,7 @@ export function Bandwidth({ result, maxTime, minTime }: { result: ProcessedResul
     const observer = new ResizeObserver(resize);
     observer.observe(node);
     return () => observer.disconnect();
-  }, [result.downloads]);
+  }, [visible]);
   if (!result.downloads) return <p>Download measurement unavailable for this result.</p>;
   const resources = result.downloads.flatMap((report) => report.resources);
   const origin = result.downloads[0]?.timeOrigin ?? 0;
