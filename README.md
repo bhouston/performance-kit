@@ -83,15 +83,15 @@ Place an optional `README.md` in the results root. The viewer renders it below t
 
 The CLI is available from this source checkout through `pnpm cli`:
 
-| Command                                                             | Use                                                                                                                        |
-| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm cli run --suite suite.json --out results`                     | Execute the suite and save raw and processed results. Add `--renderer my-renderer` or `--scene cube` to select stable IDs. |
-| `pnpm cli process --out results`                                    | Validate raw files and save processed metrics plus the lightweight result index.                                           |
-| `pnpm cli dev --out results`                                        | Watch saved results and the optional README, reload connected viewers, and highlight updated entries.                      |
-| `pnpm cli serve --out results`                                      | Serve saved results without watching files or opening a live channel.                                                      |
-| `pnpm cli build --out results --site site`                          | Export the viewer, processed metrics, captures, and optional preamble for static hosting.                                  |
-| `pnpm cli validate --suite suite.json`                              | Validate suite configuration. Use `--results results` to validate saved runs.                                              |
-| `pnpm cli compare --a renderer=new --b renderer=base --out results` | Compare matching workloads in the terminal. Select renderer or scene IDs, or pass two result directories.                  |
+| Command                                                             | Use                                                                                                               |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `pnpm cli run --suite suite.json --out results`                     | Execute each workload once and save metrics. Add `--renderer my-renderer` or `--scene cube` to select stable IDs. |
+| `pnpm cli process --out results`                                    | Validate raw files and save processed metrics plus the lightweight result index.                                  |
+| `pnpm cli dev --out results`                                        | Watch saved results and the optional README, reload connected viewers, and highlight updated entries.             |
+| `pnpm cli serve --out results`                                      | Serve saved results without watching files or opening a live channel.                                             |
+| `pnpm cli build --out results --site site`                          | Export the viewer, processed metrics, captures, and optional preamble for static hosting.                         |
+| `pnpm cli validate --suite suite.json`                              | Validate suite configuration. Use `--results results` to validate saved runs.                                     |
+| `pnpm cli compare --a renderer=new --b renderer=base --out results` | Compare matching workloads in the terminal. Select renderer or scene IDs, or pass two result directories.         |
 
 Run `pnpm cli <command> --help` for all options. `dev` uses server-sent events to refresh the viewer when result files or the optional README change, including files written by another process. Live reload is automatic in development. `serve` and static exports load the saved report without a live channel. The CLI computes and saves `metrics.json` before notifying the viewer. The viewer fetches only processed metrics and screenshots; static exports omit raw data.
 
