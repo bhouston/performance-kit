@@ -169,6 +169,15 @@ export function mannWhitney(a: readonly number[], b: readonly number[]) {
     density * t * (0.31938153 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
   return { u, pValue: Math.min(1, 2 * tail) };
 }
+const profileKey = (r: RunResult | ProcessedResult) =>
+  r.networkProfile
+    ? JSON.stringify([
+        r.networkProfile.name,
+        r.networkProfile.latencyMs,
+        r.networkProfile.downloadBytesPerSec,
+        r.networkProfile.uploadBytesPerSec,
+      ])
+    : 'unrecorded';
 export function compareRuns(
   a: readonly (RunResult | ProcessedResult)[],
   b: readonly (RunResult | ProcessedResult)[],
@@ -181,6 +190,8 @@ export function compareRuns(
   if (!a.length || !b.length) throw new Error('Comparison requires runs in both groups');
   if (new Set([...a, ...b].map((r) => r.config.vsync)).size !== 1)
     throw new Error('Cannot compare different vsync modes');
+
+  if (new Set([...a, ...b].map(profileKey)).size !== 1) throw new Error('Cannot compare different network profiles');
   const av = a
       .filter((r) => r.status === 'ok')
       .map((r) =>

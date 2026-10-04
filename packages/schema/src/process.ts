@@ -201,6 +201,15 @@ export function processRun(run: RunResult): ProcessedResult {
     schemaVersion: 2,
     runId: run.runId,
     screenshot: run.capture !== undefined,
+    ...(run.networkProfile ? { networkProfile: structuredClone(run.networkProfile) } : {}),
+    ...(run.reporter.downloads
+      ? {
+          downloads: run.reporter.downloads.map((report) => ({
+            ...structuredClone(report),
+            timeOrigin: report.timeOrigin - reporterOrigin,
+          })),
+        }
+      : {}),
     ...(run.suiteName === undefined ? {} : { suiteName: run.suiteName }),
     entry: structuredClone(run.entry),
     config: {

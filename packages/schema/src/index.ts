@@ -63,6 +63,40 @@ export const MessageLogItemSchema = object({
   receivedAt: StampSchema,
 });
 export type MessageLogItem = Static<typeof MessageLogItemSchema>;
+export const resourceCategories = ['script', 'wasm', 'model', 'texture', 'document', 'other'] as const;
+export const ResourceRecordSchema = object({
+  url: Type.String(),
+  category: Type.Union(resourceCategories.map((v) => Type.Literal(v))),
+  initiatorType: Type.String(),
+  startTime: time,
+  responseStart: time,
+  responseEnd: time,
+  transferSize: time,
+  encodedBodySize: time,
+  decodedBodySize: time,
+  sizeKnown: Type.Boolean(),
+});
+export type ResourceRecord = Static<typeof ResourceRecordSchema>;
+export type ResourceCategory = ResourceRecord['category'];
+export const DownloadReportSchema = object({
+  phase: Type.Union([Type.Literal('load'), Type.Literal('post-load')]),
+  timeOrigin: Type.Number(),
+  totalTransferBytes: time,
+  totalDecodedBytes: time,
+  byCategory: object(
+    Object.fromEntries(resourceCategories.map((v) => [v, time])) as Record<ResourceCategory, typeof time>,
+  ),
+  unknownSizeCount: Type.Integer({ minimum: 0 }),
+  resources: Type.Array(ResourceRecordSchema),
+});
+export type DownloadReport = Static<typeof DownloadReportSchema>;
+export const NetworkProfileSchema = object({
+  name: Type.String({ minLength: 1 }),
+  latencyMs: time,
+  downloadBytesPerSec: Type.Union([Type.Literal(-1), positive]),
+  uploadBytesPerSec: Type.Union([Type.Literal(-1), positive]),
+});
+export type NetworkProfile = Static<typeof NetworkProfileSchema>;
 const vsync = Type.Union([Type.Literal('on'), Type.Literal('off')]);
 export const EntrySchema = object({
   id: pathSafeId,
@@ -90,8 +124,10 @@ export const SuiteSchema = Type.Object(
         capture: Type.Optional(Type.Boolean()),
         captureAfterWarmup: Type.Optional(Type.Boolean({ deprecated: true })),
         vsync: Type.Optional(vsync),
+        networkProfile: Type.Optional(Type.String({ minLength: 1 })),
       }),
     ),
+    networkProfiles: Type.Optional(Type.Array(NetworkProfileSchema, { minItems: 1 })),
     entries: Type.Array(EntrySchema, { minItems: 1 }),
   },
   {
@@ -132,6 +168,7 @@ export const RunResultSchema = Type.Object(
       url: Type.String(),
     }),
     repetition: Type.Optional(Type.Integer({ minimum: 1 })),
+    networkProfile: Type.Optional(NetworkProfileSchema),
     config: object({ durationMs: positive, warmupMs: Type.Optional(time), vsync }),
     environment: Type.Optional(EnvironmentSchema),
     harness: object({
@@ -145,6 +182,7 @@ export const RunResultSchema = Type.Object(
     clockSync: Type.Optional(object({ samples: Type.Array(ClockSyncSampleSchema) })),
     messages: Type.Optional(Type.Array(MessageLogItemSchema)),
     reporter: object({
+      downloads: Type.Optional(Type.Array(DownloadReportSchema)),
       startReceived: Type.Optional(time),
       hello: Type.Optional(time),
       phases: Type.Optional(Type.Array(PhaseMarkSchema)),
@@ -174,6 +212,8 @@ export const ProcessedResultSchema = Type.Object(
     runId: Type.String({ minLength: 1 }),
     suiteName: Type.Optional(Type.String()),
     screenshot: Type.Boolean(),
+    networkProfile: Type.Optional(NetworkProfileSchema),
+    downloads: Type.Optional(Type.Array(DownloadReportSchema)),
     entry: RunResultSchema.properties.entry,
     config: object({ durationSeconds: positive, vsync }),
     environment: Type.Optional(EnvironmentSchema),
@@ -295,6 +335,7 @@ const envelope = <T extends string, P extends TSchema>(type: T, payload: P) =>
     payload,
   });
 export const protocolSchemas = {
+  downloadReport: envelope('download-report', DownloadReportSchema),
   start: envelope(
     'start',
     object({
@@ -349,6 +390,7 @@ export const MessageToReporterSchema = Type.Union([
   protocolSchemas.abort,
 ]);
 export const MessageToHarnessSchema = Type.Union([
+  protocolSchemas.downloadReport,
   protocolSchemas.hello,
   protocolSchemas.phase,
   protocolSchemas.ready,
@@ -466,3 +508,5 @@ export * from './derive.js';
 export * from './colorScales.js';
 
 export * from './process.js';
+
+export * from './bandwidth.js';

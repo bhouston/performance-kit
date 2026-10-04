@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { humanizeBytes } from 'humanize-units';
 import { createRoot } from 'react-dom/client';
 import { frameTimeColor, responsivenessColor } from 'performance-kit-schema/colorScales';
 import type { NamedEntity, ProcessedResult } from 'performance-kit-schema';
 import './style.css';
+import { Bandwidth } from './Bandwidth.js';
 type Point = [seconds: number, milliseconds: number];
 type ResultReference = { renderer: NamedEntity; scene: NamedEntity; metrics: string; screenshot?: string };
 type RecordItem = ResultReference & { result: ProcessedResult };
+const totalDownloads = (result: ProcessedResult) =>
+  result.downloads?.reduce((total, report) => total + report.totalTransferBytes, 0);
 const entryTitle = (result: ProcessedResult) => `${result.entry.renderer.name} · ${result.entry.scene.name}`;
 const duration = (seconds: number | undefined) => {
   if (seconds === undefined) return '—';
@@ -18,10 +22,12 @@ const fps = (value: number | undefined) => (value === undefined ? '—' : `${Num
 function Timeline({
   result,
   maxTime,
+  minTime = 0,
   kind = 'intervals',
 }: {
   result: ProcessedResult;
   maxTime: number;
+  minTime?: number;
   kind?: 'intervals' | 'cpu' | 'gpu';
 }) {
   const [hover, setHover] = useState<{ time: number; value: number; x: number; y: number }>();
@@ -61,7 +67,7 @@ function Timeline({
       });
       const ceiling = Math.max(100, (statistics.p99 ?? statistics.p95 ?? 0) * 1200);
       const clipped = points.some((point) => point[1] > ceiling);
-      const x = (t: number) => 36 + (t / maxTime) * (width - 50),
+      const x = (t: number) => 36 + ((t - minTime) / (maxTime - minTime)) * (width - 50),
         y = (v: number) => height - 28 - (Math.min(v, ceiling) / ceiling) * (height - 42);
       const style = getComputedStyle(canvas),
         color = (name: string) => style.getPropertyValue(name).trim();
@@ -79,7 +85,13 @@ function Timeline({
         ctx.fillText(`${v === ceiling && clipped ? '≥' : ''}${Math.round(v)}`, 3, y(v) + 3);
       }
       ctx.fillText('ms', 3, height - 8);
-      ctx.fillText('0s', 36, height - 8);
+      ctx.fillText(`${minTime.toFixed(1)}s`, 36, height - 8);
+      for (let second = Math.ceil(minTime); second <= maxTime; second++) {
+        ctx.beginPath();
+        ctx.moveTo(x(second), 10);
+        ctx.lineTo(x(second), height - 28);
+        ctx.stroke();
+      }
       ctx.fillText(`${maxTime.toFixed(1)}s`, width - 43, height - 8);
       for (const phase of timeline.phases) {
         ctx.fillStyle = color(`--chart-${phase.phase}`);
@@ -179,7 +191,7 @@ function Timeline({
       observer.disconnect();
       theme.removeEventListener('change', draw);
     };
-  }, [result, kind, maxTime, hover]);
+  }, [result, kind, maxTime, minTime, hover]);
   return (
     <div className="timeline-container">
       <canvas
@@ -191,7 +203,7 @@ function Timeline({
           const canvas = event.currentTarget;
           const rect = canvas.getBoundingClientRect();
           const px = event.clientX - rect.left;
-          const time = ((px - 36) / (rect.width - 50)) * maxTime;
+          const time = minTime + ((px - 36) / (rect.width - 50)) * (maxTime - minTime);
           const frames = result.timeline.frameSeconds;
           if (px < 36 || px > rect.width - 14 || !frames.length || time < frames[0]! || time > frames.at(-1)!) {
             setHover(undefined);
@@ -273,7 +285,7 @@ function Histogram({ values, responsiveness = false }: { values: number[]; respo
     </div>
   );
 }
-function Detail({ result }: { result: ProcessedResult }) {
+function Detail({ result, maxTime, minTime }: { result: ProcessedResult; maxTime: number; minTime: number }) {
   const { statistics, timeline } = result;
   const intervals =
     result.measuredIntervalSeconds ??
@@ -286,6 +298,7 @@ function Detail({ result }: { result: ProcessedResult }) {
     .map((time, index) => Math.max(0, time - timeline.watchdogSeconds[index]! - timeline.watchdogPeriodSeconds));
   return (
     <div className="detail">
+      <Bandwidth result={result} maxTime={maxTime} minTime={minTime} />
       <div className="detail-grid">
         <section>
           <h3>Framerate</h3>
@@ -332,11 +345,13 @@ function Detail({ result }: { result: ProcessedResult }) {
 function Card({
   item,
   maxTime,
+  minTime = 0,
   revision = 0,
   captureEpoch = 0,
 }: {
   item: RecordItem;
   maxTime: number;
+  minTime?: number;
   revision?: number;
   captureEpoch?: number;
 }) {
@@ -376,7 +391,8 @@ function Card({
           <div className="card-heading">
             <div>
               <button className="entry-title" onClick={() => setOpen(!open)} aria-expanded={open}>
-                {entryTitle(r)} <span>{open ? '−' : '+'}</span>
+                {entryTitle(r)} <small> · {r.networkProfile?.name ?? 'profile unrecorded'}</small>{' '}
+                <span>{open ? '−' : '+'}</span>
               </button>
             </div>
             <div className="stats">
@@ -396,13 +412,22 @@ function Card({
                 <small>Setup</small>
                 <strong>{duration(d.setupSeconds)}</strong>
               </div>
+              <div
+                title={`Known wire bytes across load and post-load; ${r.downloads?.reduce((count, report) => count + report.unknownSizeCount, 0) ?? 0} requests with hidden sizes`}
+              >
+                <small>Download</small>
+                <strong>
+                  {r.downloads?.some((report) => report.unknownSizeCount > 0) ? '≥ ' : ''}
+                  {humanizeBytes(totalDownloads(r), { emptyValue: '—' })}
+                </strong>
+              </div>
             </div>
           </div>
-          <Timeline result={r} maxTime={maxTime} />
+          <Timeline result={r} maxTime={maxTime} minTime={minTime} />
         </div>
       </div>
       {(r.error || r.status !== 'ok') && <p className="error">{r.error?.message ?? r.status}</p>}
-      {open && <Detail result={r} />}
+      {open && <Detail result={r} maxTime={maxTime} minTime={minTime} />}
     </article>
   );
 }
@@ -580,9 +605,23 @@ function App() {
     .toSorted((a, b) =>
       sort === 'name'
         ? entryTitle(a.result).localeCompare(entryTitle(b.result))
-        : (a.result.statistics[sort as 'median' | 'p95' | 'iqr' | 'setupSeconds'] ?? Infinity) -
-          (b.result.statistics[sort as 'median' | 'p95' | 'iqr' | 'setupSeconds'] ?? Infinity),
+        : sort === 'download'
+          ? (totalDownloads(a.result) ?? Infinity) - (totalDownloads(b.result) ?? Infinity)
+          : (a.result.statistics[sort as 'median' | 'p95' | 'iqr' | 'setupSeconds'] ?? Infinity) -
+            (b.result.statistics[sort as 'median' | 'p95' | 'iqr' | 'setupSeconds'] ?? Infinity),
     );
+  const minTime = Math.floor(
+    cards.reduce(
+      (earliest, item) =>
+        Math.min(
+          earliest,
+          ...(item.result.downloads ?? []).flatMap((report) =>
+            report.resources.map((resource) => (report.timeOrigin + resource.startTime) / 1000),
+          ),
+        ),
+      0,
+    ),
+  );
   const maxTime = cards.reduce((longest, item) => Math.max(longest, item.result.timeline.maxTime), 1);
   return (
     <>
@@ -605,6 +644,7 @@ function App() {
               <option value="p95">Tail FPS</option>
               <option value="iqr">Jitter</option>
               <option value="setupSeconds">Setup time</option>
+              <option value="download">Download</option>
             </select>
             <select
               aria-label="Renderers"
@@ -671,6 +711,7 @@ function App() {
           <Card
             key={item.metrics}
             maxTime={maxTime}
+            minTime={minTime}
             item={item}
             captureEpoch={captureEpoch}
             revision={revisions[item.metrics] ?? 0}

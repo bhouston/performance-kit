@@ -63,6 +63,53 @@
               "type": "string"
             }
           ]
+        },
+        "networkProfile": {
+          "minLength": 1,
+          "type": "string"
+        }
+      }
+    },
+    "networkProfiles": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["name", "latencyMs", "downloadBytesPerSec", "uploadBytesPerSec"],
+        "properties": {
+          "name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "latencyMs": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "downloadBytesPerSec": {
+            "anyOf": [
+              {
+                "const": -1,
+                "type": "number"
+              },
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              }
+            ]
+          },
+          "uploadBytesPerSec": {
+            "anyOf": [
+              {
+                "const": -1,
+                "type": "number"
+              },
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              }
+            ]
+          }
         }
       }
     },

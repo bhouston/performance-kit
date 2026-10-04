@@ -117,3 +117,13 @@ describe('read-time statistics', () => {
     expect(responsivenessColor(100)).toBe('rgb(249,115,22)');
   });
 });
+it('rejects comparisons across network conditions, including legacy unrecorded profiles', () => {
+  const a = run(),
+    b = run();
+  a.networkProfile = { name: 'slow-4g', latencyMs: 150, downloadBytesPerSec: 200000, uploadBytesPerSec: 93750 };
+  expect(() => compareRuns([a], [b])).toThrow('network profiles');
+  b.networkProfile = { ...a.networkProfile };
+  expect(() => compareRuns([a], [b])).not.toThrow();
+  b.networkProfile.latencyMs = 200;
+  expect(() => compareRuns([a], [b])).toThrow('network profiles');
+});

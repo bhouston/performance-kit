@@ -7,6 +7,7 @@ import puppeteer, { type Browser } from 'puppeteer';
 import { ulid } from 'ulid';
 import { assertMessageToHarness } from 'performance-kit-schema';
 import type { RunResult, Environment } from 'performance-kit-schema';
+import { configureNetwork, resolveNetworkProfile } from './network.js';
 import { harnessRun } from './harness.js';
 import { chromeFlags, isSoftwareAdapter, scheduleSuite } from './schedule.js';
 import { loadSuite, safeEntryId, writeRun } from './storage.js';
@@ -57,6 +58,7 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
   if (options.cooldownMs !== undefined && (!Number.isFinite(options.cooldownMs) || options.cooldownMs < 0))
     throw new Error('cooldown-ms must be nonnegative');
   const suite = await loadSuite(options.suite);
+  const networkProfile = resolveNetworkProfile(suite);
   const schedule = scheduleSuite(suite, options);
   if (!schedule.length) throw new Error('No suite entries match the filters');
   for (const { entry } of schedule) safeEntryId(entry.id);
@@ -140,6 +142,7 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
       const { entry } = schedule[i];
       const runId = ulid();
       const page = await browser!.newPage();
+      await configureNetwork(page, networkProfile);
       await page.setViewport({
         width: options.width ?? 1920,
         height: options.height ?? 1080,
@@ -239,6 +242,7 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
         schemaVersion: 1,
         runId,
         suiteName: suite.name,
+        networkProfile,
         entry: { id: entry.id, name: entry.name, renderer: entry.renderer, scene: entry.scene, url: entry.url },
         config: {
           durationMs: entry.durationMs,
