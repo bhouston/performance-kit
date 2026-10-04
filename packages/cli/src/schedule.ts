@@ -1,0 +1,52 @@
+import type { Entry, Suite } from 'performance-kit-schema';
+export interface ScheduledRun {
+  entry: Entry;
+  repetition: number;
+}
+export function scheduleSuite(
+  suite: Suite,
+  options: { filter?: string[]; seed?: number; repetitions?: number } = {},
+): ScheduledRun[] {
+  const entries = suite.entries.filter((entry) =>
+    (options.filter ?? []).every((filter) => {
+      const separator = filter.indexOf('=');
+      if (separator < 1) throw new Error(`Invalid label filter ${filter}; use key=value`);
+      return entry.labels?.some(
+        (label) => label.key === filter.slice(0, separator) && label.value === filter.slice(separator + 1),
+      );
+    }),
+  );
+  let state = options.seed ?? 1;
+  const shuffle = (values: Entry[]) => {
+    if (options.seed === undefined) return values;
+    for (let i = values.length - 1; i > 0; i--) {
+      state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+      const j = state % (i + 1);
+      [values[i], values[j]] = [values[j], values[i]];
+    }
+    return values;
+  };
+  const repetitions = options.repetitions ?? suite.defaults?.repetitions ?? 3;
+  if (!Number.isInteger(repetitions) || repetitions < 1) throw new Error('Repetitions must be a positive integer');
+  const runs: ScheduledRun[] = [];
+  if (suite.defaults?.order === 'sequential') {
+    for (const entry of shuffle([...entries]))
+      for (let repetition = 1; repetition <= repetitions; repetition++) runs.push({ entry, repetition });
+  } else {
+    for (let repetition = 1; repetition <= repetitions; repetition++)
+      for (const entry of shuffle([...entries])) runs.push({ entry, repetition });
+  }
+  return runs;
+}
+export const chromeFlags = (vsync: 'on' | 'off') => [
+  '--disable-background-timer-throttling',
+  '--disable-renderer-backgrounding',
+  '--disable-backgrounding-occluded-windows',
+  '--enable-unsafe-webgpu',
+  '--enable-webgpu-developer-features',
+  '--site-per-process',
+  ...(vsync === 'off' ? ['--disable-gpu-vsync', '--disable-frame-rate-limit'] : []),
+];
+export function isSoftwareAdapter(adapter: unknown): boolean {
+  return /swiftshader|llvmpipe|softpipe|software rasterizer|microsoft basic render/i.test(JSON.stringify(adapter));
+}
