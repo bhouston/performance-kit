@@ -7,18 +7,10 @@
     }
   ],
   "commit": false,
-  "fixed": [
-    [
-      "performance-kit",
-      "performance-kit-reporter",
-      "performance-kit-schema"
-    ]
-  ],
+  "fixed": [["performance-kit", "performance-kit-reporter", "performance-kit-schema"]],
   "linked": [],
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": [
-    "@performance-kit/viewer"
-  ]
+  "ignore": ["@performance-kit/viewer"]
 }

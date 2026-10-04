@@ -1,0 +1,34 @@
+name: GPU benchmark
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Suite JSON path available on this runner
+        required: true
+        default: examples/demo-suite.json
+permissions:
+  contents: read
+jobs:
+  benchmark:
+    runs-on: [self-hosted, gpu]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm cli run --suite "$BENCHMARK_SUITE" --out results --renderer-root examples
+        env:
+          BENCHMARK_SUITE: ${{ inputs.suite }}
+      - run: pnpm cli build --out results --site site
+        if: always()
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-results
+          path: |
+            results/
+            site/
