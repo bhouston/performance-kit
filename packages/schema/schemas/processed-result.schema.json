@@ -78,13 +78,13 @@
     "config": {
       "additionalProperties": false,
       "type": "object",
-      "required": ["durationMs", "warmupMs", "vsync"],
+      "required": ["durationSeconds", "warmupSeconds", "vsync"],
       "properties": {
-        "durationMs": {
+        "durationSeconds": {
           "exclusiveMinimum": 0,
           "type": "number"
         },
-        "warmupMs": {
+        "warmupSeconds": {
           "minimum": 0,
           "type": "number"
         },
@@ -237,8 +237,8 @@
         "intervalCount",
         "cpuSampleCount",
         "gpuSampleCount",
-        "setupMaxBlockMs",
-        "setupBlockedMs",
+        "setupMaxBlockSeconds",
+        "setupBlockedSeconds",
         "phaseDurations"
       ],
       "properties": {
@@ -273,31 +273,34 @@
         "mad": {
           "type": "number"
         },
-        "fps": {
+        "typicalFps": {
           "type": "number"
         },
-        "setupMs": {
+        "tailFps": {
           "type": "number"
         },
-        "reporterSetupMs": {
+        "setupSeconds": {
           "type": "number"
         },
-        "hiddenStartupMs": {
+        "reporterSetupSeconds": {
           "type": "number"
         },
-        "unaccountedMs": {
+        "hiddenStartupSeconds": {
           "type": "number"
         },
-        "setupMaxBlockMs": {
+        "unaccountedSeconds": {
           "type": "number"
         },
-        "setupBlockedMs": {
+        "setupMaxBlockSeconds": {
           "type": "number"
         },
-        "offsetMs": {
+        "setupBlockedSeconds": {
           "type": "number"
         },
-        "driftMs": {
+        "offsetSeconds": {
+          "type": "number"
+        },
+        "driftSeconds": {
           "type": "number"
         },
         "cpuMedian": {
@@ -337,12 +340,12 @@
         "valueUnit",
         "maxTime",
         "frameSeconds",
-        "cpuMs",
-        "gpuMs",
+        "cpuSeconds",
+        "gpuSeconds",
         "frameIndices",
         "watchdogSeconds",
         "watchdogIndices",
-        "watchdogPeriodMs",
+        "watchdogPeriodSeconds",
         "phases",
         "blocks",
         "discrepancies"
@@ -353,7 +356,7 @@
           "type": "string"
         },
         "valueUnit": {
-          "const": "milliseconds",
+          "const": "seconds",
           "type": "string"
         },
         "maxTime": {
@@ -375,7 +378,7 @@
             "type": "number"
           }
         },
-        "cpuMs": {
+        "cpuSeconds": {
           "type": "array",
           "items": {
             "anyOf": [
@@ -388,7 +391,7 @@
             ]
           }
         },
-        "gpuMs": {
+        "gpuSeconds": {
           "type": "array",
           "items": {
             "anyOf": [
@@ -425,8 +428,8 @@
             "type": "integer"
           }
         },
-        "watchdogPeriodMs": {
-          "const": 16,
+        "watchdogPeriodSeconds": {
+          "const": 0.016,
           "type": "number"
         },
         "phases": {
@@ -459,7 +462,7 @@
               "end": {
                 "type": "number"
               },
-              "durationMs": {
+              "durationSeconds": {
                 "type": "number"
               }
             }
@@ -471,7 +474,7 @@
           "items": {
             "additionalProperties": false,
             "type": "object",
-            "required": ["start", "end", "durationMs", "sources"],
+            "required": ["start", "end", "durationSeconds", "sources"],
             "properties": {
               "start": {
                 "type": "number"
@@ -479,7 +482,7 @@
               "end": {
                 "type": "number"
               },
-              "durationMs": {
+              "durationSeconds": {
                 "type": "number"
               },
               "sources": {
@@ -498,12 +501,12 @@
           "items": {
             "additionalProperties": false,
             "type": "object",
-            "required": ["name", "ms", "flagged"],
+            "required": ["name", "seconds", "flagged"],
             "properties": {
               "name": {
                 "type": "string"
               },
-              "ms": {
+              "seconds": {
                 "type": "number"
               },
               "flagged": {
@@ -556,7 +559,7 @@
       "items": {
         "additionalProperties": false,
         "type": "object",
-        "required": ["start", "end", "durationMs"],
+        "required": ["start", "end", "durationSeconds"],
         "properties": {
           "start": {
             "type": "number"
@@ -564,7 +567,7 @@
           "end": {
             "type": "number"
           },
-          "durationMs": {
+          "durationSeconds": {
             "type": "number"
           },
           "sourceURL": {
