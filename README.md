@@ -93,7 +93,7 @@ The CLI is available from this source checkout through `pnpm cli`:
 | `pnpm cli validate --suite suite.json`                              | Validate suite configuration. Use `--results results` to validate saved runs.                                     |
 | `pnpm cli compare --a renderer=new --b renderer=base --out results` | Compare matching workloads in the terminal. Select renderer or scene IDs, or pass two result directories.         |
 
-Run `pnpm cli <command> --help` for all options. `dev` uses server-sent events to refresh the viewer when result files or the optional README change, including files written by another process. Live reload is automatic in development. `serve` and static exports load the saved report without a live channel. The CLI computes and saves `metrics.json` before notifying the viewer. The viewer fetches only processed metrics and screenshots; static exports omit raw data.
+Run `pnpm cli <command> --help` for all options. `dev` uses server-sent events to refresh the viewer when result files or the optional README change, including files written by another process. Live reload is automatic in development. `dev` starts at `--port` (default 4400) and tries successive ports if occupied; open the actual URL printed at startup. `serve` uses only the configured port (default 4400) and fails if it is occupied. `serve` and static exports load the saved report without a live channel. The CLI computes and saves `metrics.json` before notifying the viewer. The viewer fetches only processed metrics and screenshots; static exports omit raw data.
 
 If your suite includes a built toolkit checkout at `performance-kit/`, add scripts such as:
 
