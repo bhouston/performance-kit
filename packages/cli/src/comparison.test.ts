@@ -1,7 +1,7 @@
 import { it, expect } from 'vitest';
 import type { RunResult } from 'performance-kit-schema';
-import { compareGroups } from './comparison.js';
-function run(id: string, scene: string, renderer: string, interval: number, experiment = 'baseline'): RunResult {
+import { compareGroups, selectComparisonGroup } from './comparison.js';
+function run(id: string, scene: string, renderer: string, interval: number): RunResult {
   return {
     schemaVersion: 1,
     runId: id,
@@ -9,11 +9,8 @@ function run(id: string, scene: string, renderer: string, interval: number, expe
       id,
       name: id,
       url: 'https://example.com',
-      labels: [
-        { key: 'scene', value: scene },
-        { key: 'renderer', value: renderer },
-        { key: 'experiment', value: experiment },
-      ],
+      renderer: { id: renderer, name: renderer },
+      scene: { id: scene, name: scene },
     },
     repetition: 1,
     config: { durationMs: 100, warmupMs: 0, vsync: 'on' },
@@ -30,71 +27,62 @@ function run(id: string, scene: string, renderer: string, interval: number, expe
   };
 }
 it('pairs directories by stable entry id without pooling scenes', () => {
-  const a = [run('cube', 'cube', 'a', 10), run('sponza', 'sponza', 'a', 30)];
-  const b = [run('cube', 'cube', 'b', 20), run('sponza', 'sponza', 'b', 30)];
-  const comparisons = compareGroups({ runs: a, directory: true }, { runs: b, directory: true }, { iterations: 10 });
-  expect(comparisons.map((c) => [c.workload, c.ratio])).toEqual([
+  const a = [run('cube', 'cube', 'a', 10), run('sponza', 'sponza', 'a', 30)],
+    b = [run('cube', 'cube', 'b', 20), run('sponza', 'sponza', 'b', 30)];
+  expect(
+    compareGroups({ runs: a, directory: true }, { runs: b, directory: true }, { iterations: 10 }).map((c) => [
+      c.workload,
+      c.ratio,
+    ]),
+  ).toEqual([
     ['cube', 0.5],
     ['sponza', 1],
   ]);
 });
-it('pairs renderer labels using other workload labels', () => {
-  const a = [run('a-cube', 'cube', 'a', 10), run('a-sponza', 'sponza', 'a', 30)];
-  const b = [run('b-cube', 'cube', 'b', 20), run('b-sponza', 'sponza', 'b', 30)];
+it('pairs renderer configurations independently for matching scenes', () => {
+  const a = [run('a-cube', 'cube', 'three-new--ssgi-half', 10), run('a-sponza', 'sponza', 'three-new--ssgi-half', 30)],
+    b = [run('b-cube', 'cube', 'three-current', 20), run('b-sponza', 'sponza', 'three-current', 30)];
   const comparisons = compareGroups(
     { runs: a, directory: false, selectorKey: 'renderer' },
     { runs: b, directory: false, selectorKey: 'renderer' },
     { iterations: 10 },
   );
-  expect(comparisons).toHaveLength(2);
-  expect(comparisons[0].entryB).toBe('b-cube');
+  expect(comparisons.map((c) => [c.workload, c.entryB, c.ratio])).toEqual([
+    ['scene=cube', 'b-cube', 0.5],
+    ['scene=sponza', 'b-sponza', 1],
+  ]);
 });
-it('rejects invalid bootstrap controls and unmatched workloads', () => {
+it('pairs scene comparisons by matching renderer configuration IDs', () => {
+  const a = [run('cube-base', 'cube', 'three-current', 10), run('cube-optimized', 'cube', 'three-new--ssgi-half', 5)],
+    b = [
+      run('sponza-base', 'sponza', 'three-current', 20),
+      run('sponza-optimized', 'sponza', 'three-new--ssgi-half', 10),
+    ];
+  const comparisons = compareGroups(
+    { runs: a, directory: false, selectorKey: 'scene' },
+    { runs: b, directory: false, selectorKey: 'scene' },
+    { iterations: 10 },
+  );
+  expect(comparisons.map((c) => [c.entryA, c.entryB])).toEqual([
+    ['cube-base', 'sponza-base'],
+    ['cube-optimized', 'sponza-optimized'],
+  ]);
+});
+it('rejects mixed axes, invalid bootstrap controls, and unmatched workloads', () => {
   const group = { runs: [run('cube', 'cube', 'a', 10)], directory: true };
   expect(() => compareGroups(group, group, { iterations: 0 })).toThrow('positive integer');
   expect(() => compareGroups(group, group, { seed: Infinity })).toThrow('finite');
   expect(() => compareGroups(group, { runs: [run('other', 'other', 'b', 10)], directory: true })).toThrow(
     'No matching',
   );
+  expect(() =>
+    compareGroups(
+      { ...group, directory: false, selectorKey: 'renderer' },
+      { ...group, directory: false, selectorKey: 'scene' },
+    ),
+  ).toThrow('same renderer or scene axis');
 });
-
-it('matches renderer comparisons by scene and experiment without pooling optimization variants', () => {
-  const a = [
-    run('new-baseline', 'cube', 'three-new', 10),
-    run('new-ssgi-half', 'cube', 'three-new', 6, 'ssgi-half'),
-    run('new-light-bake', 'cube', 'three-new', 5, 'light-bake'),
-  ];
-  const b = [run('current-baseline', 'cube', 'three-current', 20)];
-  const comparisons = compareGroups(
-    { runs: a, directory: false, selectorKey: 'renderer' },
-    { runs: b, directory: false, selectorKey: 'renderer' },
-    { iterations: 10 },
-  );
-  expect(comparisons).toHaveLength(1);
-  expect(comparisons[0]).toMatchObject({ entryA: 'new-baseline', entryB: 'current-baseline', ratio: 0.5 });
-});
-it('matches experiment comparisons by scene and renderer', () => {
-  const a = [
-    run('new-optimized', 'cube', 'three-new', 5, 'optimized'),
-    run('current-optimized', 'cube', 'three-current', 10, 'optimized'),
-  ];
-  const b = [run('new-baseline', 'cube', 'three-new', 10), run('current-baseline', 'cube', 'three-current', 20)];
-  const comparisons = compareGroups(
-    { runs: a, directory: false, selectorKey: 'experiment' },
-    { runs: b, directory: false, selectorKey: 'experiment' },
-    { iterations: 10 },
-  );
-  expect(comparisons.map(({ entryA, entryB }) => [entryA, entryB])).toEqual([
-    ['new-optimized', 'new-baseline'],
-    ['current-optimized', 'current-baseline'],
-  ]);
-});
-it('supports different selector keys when both selected axes differ', () => {
-  const comparisons = compareGroups(
-    { runs: [run('new-optimized', 'cube', 'three-new', 5, 'optimized')], directory: false, selectorKey: 'experiment' },
-    { runs: [run('current-baseline', 'cube', 'three-current', 20)], directory: false, selectorKey: 'renderer' },
-    { iterations: 10 },
-  );
-  expect(comparisons).toHaveLength(1);
-  expect(comparisons[0]).toMatchObject({ entryA: 'new-optimized', entryB: 'current-baseline', ratio: 0.25 });
+it('accepts only explicit renderer and scene selectors', async () => {
+  await expect(selectComparisonGroup('experiment=optimized', '/unused')).rejects.toThrow('renderer=<id>');
+  await expect(selectComparisonGroup('renderer=', '/unused')).rejects.toThrow('renderer=<id>');
 });

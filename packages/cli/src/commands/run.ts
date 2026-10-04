@@ -7,11 +7,8 @@ const command: CommandModule = {
     yargs
       .option('suite', { type: 'string', demandOption: true })
       .option('out', { type: 'string', default: 'performance-results' })
-      .option('filter', {
-        type: 'array',
-        string: true,
-        describe: 'Include only entries matching every key=value label',
-      })
+      .option('renderer', { type: 'array', string: true, describe: 'Include these renderer configuration IDs' })
+      .option('scene', { type: 'array', string: true, describe: 'Include these scene IDs' })
       .option('headful', { type: 'boolean', default: false })
       .option('live', { type: 'boolean', default: false })
       .option('host', { type: 'string', default: 'localhost' })
@@ -35,7 +32,8 @@ const command: CommandModule = {
     await runSuite({
       suite: args.suite as string,
       out: args.out as string,
-      filter: args.filter as string[] | undefined,
+      renderer: args.renderer as string[] | undefined,
+      scene: args.scene as string[] | undefined,
       headful: args.headful as boolean,
       live: args.live as boolean,
       host: args.host as string,

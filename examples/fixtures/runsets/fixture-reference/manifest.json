@@ -14,34 +14,30 @@
       {
         "id": "three-base",
         "name": "three-base / reference cube",
-        "labels": [
-          {
-            "key": "renderer",
-            "value": "three-base"
-          },
-          {
-            "key": "scene",
-            "value": "cube"
-          }
-        ],
         "url": "http://127.0.0.1:4401/demo",
-        "durationMs": 1000
+        "durationMs": 1000,
+        "renderer": {
+          "id": "three-base",
+          "name": "Three Base"
+        },
+        "scene": {
+          "id": "cube",
+          "name": "Reference cube"
+        }
       },
       {
         "id": "three-webgpu",
         "name": "three-webgpu / reference cube",
-        "labels": [
-          {
-            "key": "renderer",
-            "value": "three-webgpu"
-          },
-          {
-            "key": "scene",
-            "value": "cube"
-          }
-        ],
         "url": "http://127.0.0.1:4401/demo",
-        "durationMs": 1000
+        "durationMs": 1000,
+        "renderer": {
+          "id": "three-webgpu",
+          "name": "Three WebGPU"
+        },
+        "scene": {
+          "id": "cube",
+          "name": "Reference cube"
+        }
       }
     ]
   },

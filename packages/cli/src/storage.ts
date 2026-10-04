@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, writeFile, cp, rename, stat } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile, cp, rename, stat, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertRunResult, assertSuite, assertManifest } from 'performance-kit-schema';
@@ -102,6 +102,13 @@ export async function buildReport(out: string, site: string): Promise<void> {
     await cp(runsets, join(destination, 'runsets'), { recursive: true });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  const readme = join(destination, 'README.md');
+  try {
+    await cp(join(input, 'README.md'), readme);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    await rm(readme, { force: true });
   }
   await writeFile(join(destination, 'index.json'), JSON.stringify(await scanResults(input)));
 }

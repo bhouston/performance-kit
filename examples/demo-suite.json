@@ -1,28 +1,43 @@
 {
   "schemaVersion": 1,
   "name": "Cube and deliberate jank",
-  "defaults": { "warmupMs": 300, "repetitions": 2, "order": "interleaved", "vsync": "on" },
+  "defaults": {
+    "warmupMs": 300,
+    "repetitions": 2,
+    "order": "interleaved",
+    "vsync": "on"
+  },
   "entries": [
     {
       "id": "cube",
       "name": "Spinning cube",
-      "labels": [
-        { "key": "renderer", "value": "smooth" },
-        { "key": "scene", "value": "cube" }
-      ],
       "url": "http://127.0.0.1:4401/demo.html",
-      "durationMs": 1000
+      "durationMs": 1000,
+      "renderer": {
+        "id": "smooth",
+        "name": "Smooth renderer"
+      },
+      "scene": {
+        "id": "cube",
+        "name": "Reference cube"
+      }
     },
     {
       "id": "janky-cube",
       "name": "Deliberately janky cube",
-      "labels": [
-        { "key": "renderer", "value": "janky" },
-        { "key": "scene", "value": "cube" }
-      ],
       "url": "http://127.0.0.1:4401/demo.html",
       "durationMs": 1000,
-      "params": { "janky": true }
+      "params": {
+        "janky": true
+      },
+      "renderer": {
+        "id": "janky",
+        "name": "Janky renderer"
+      },
+      "scene": {
+        "id": "cube",
+        "name": "Reference cube"
+      }
     }
   ]
 }

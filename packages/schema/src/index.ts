@@ -5,8 +5,11 @@ const object = <T extends Record<string, TSchema>>(properties: T) =>
 const time = Type.Number({ minimum: 0 });
 const ns = Type.String({ pattern: '^[0-9]+$' });
 const positive = Type.Number({ exclusiveMinimum: 0 });
-export const LabelSchema = object({ key: Type.String({ minLength: 1 }), value: Type.String() });
-export type Label = Static<typeof LabelSchema>;
+const pathSafeId = Type.String({ pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$' });
+/** Stable filesystem-safe identifier and a separate human-readable display name. */
+export const NamedEntitySchema = object({ id: pathSafeId, name: Type.String({ minLength: 1 }) });
+export type NamedEntity = Static<typeof NamedEntitySchema>;
+export type NamedEntityType = NamedEntity;
 export const StampSchema = object({
   clock: Type.Union([Type.Literal('harness'), Type.Literal('reporter')]),
   t: time,
@@ -62,15 +65,17 @@ export const MessageLogItemSchema = object({
 export type MessageLogItem = Static<typeof MessageLogItemSchema>;
 const vsync = Type.Union([Type.Literal('on'), Type.Literal('off')]);
 export const EntrySchema = object({
-  id: Type.String({ pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$' }),
+  id: pathSafeId,
   name: Type.String(),
-  labels: Type.Optional(Type.Array(LabelSchema)),
+  renderer: NamedEntitySchema,
+  scene: NamedEntitySchema,
   url: Type.String({ minLength: 1 }),
   durationMs: positive,
   warmupMs: Type.Optional(time),
   params: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
 });
 export type Entry = Static<typeof EntrySchema>;
+export type SuiteEntry = Entry;
 export const SuiteSchema = Type.Object(
   {
     $schema: Type.Optional(Type.String()),
@@ -121,7 +126,8 @@ export const RunResultSchema = Type.Object(
     entry: object({
       id: Type.String(),
       name: Type.String(),
-      labels: Type.Array(LabelSchema),
+      renderer: NamedEntitySchema,
+      scene: NamedEntitySchema,
       url: Type.String(),
     }),
     repetition: Type.Optional(Type.Integer({ minimum: 1 })),
@@ -319,6 +325,7 @@ export function assertMessageToHarness(value: unknown): asserts value is Message
   assert(validateMessageToHarness, value, 'Invalid protocol message');
 }
 export const schemas = {
+  'named-entity': NamedEntitySchema,
   suite: SuiteSchema,
   'run-result': RunResultSchema,
   manifest: ManifestSchema,

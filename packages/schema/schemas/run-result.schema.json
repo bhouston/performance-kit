@@ -18,7 +18,7 @@
     "entry": {
       "additionalProperties": false,
       "type": "object",
-      "required": ["id", "name", "labels", "url"],
+      "required": ["id", "name", "renderer", "scene", "url"],
       "properties": {
         "id": {
           "type": "string"
@@ -26,20 +26,33 @@
         "name": {
           "type": "string"
         },
-        "labels": {
-          "type": "array",
-          "items": {
-            "additionalProperties": false,
-            "type": "object",
-            "required": ["key", "value"],
-            "properties": {
-              "key": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "value": {
-                "type": "string"
-              }
+        "renderer": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": ["id", "name"],
+          "properties": {
+            "id": {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+              "type": "string"
+            },
+            "name": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        },
+        "scene": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": ["id", "name"],
+          "properties": {
+            "id": {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+              "type": "string"
+            },
+            "name": {
+              "minLength": 1,
+              "type": "string"
             }
           }
         },

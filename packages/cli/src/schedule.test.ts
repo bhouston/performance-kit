@@ -10,7 +10,8 @@ const suite: Suite = {
     name: id,
     url: 'https://example.com',
     durationMs: 100,
-    labels: [{ key: 'renderer', value: id }],
+    renderer: { id, name: id.toUpperCase() },
+    scene: { id: 'cube', name: 'Spinning cube' },
   })),
 };
 describe('benchmark scheduling', () => {
@@ -24,12 +25,19 @@ describe('benchmark scheduling', () => {
       'c2',
     ]);
   });
-  it('filters labels before scheduling', () => {
-    expect(scheduleSuite(suite, { filter: ['renderer=b'] }).map((run) => run.entry.id)).toEqual(['b', 'b']);
+  it('selects renderer and scene IDs before scheduling', () => {
+    expect(scheduleSuite(suite, { renderer: ['b'] }).map((run) => run.entry.id)).toEqual(['b', 'b']);
+    expect(scheduleSuite(suite, { renderer: ['a', 'c'], scene: ['cube'] }).map((run) => run.entry.id)).toEqual([
+      'a',
+      'c',
+      'a',
+      'c',
+    ]);
+    expect(scheduleSuite(suite, { scene: ['other'] })).toEqual([]);
   });
-  it('rejects malformed filters and repetition counts', () => {
-    expect(() => scheduleSuite(suite, { filter: ['renderer'] })).toThrow('key=value');
+  it('rejects invalid repetition counts and shuffle seeds', () => {
     expect(() => scheduleSuite(suite, { repetitions: 0 })).toThrow();
+    expect(() => scheduleSuite(suite, { seed: Infinity })).toThrow('finite');
   });
   it('has reproducible seeded order', () => {
     expect(scheduleSuite(suite, { seed: 17 })).toEqual(scheduleSuite(suite, { seed: 17 }));

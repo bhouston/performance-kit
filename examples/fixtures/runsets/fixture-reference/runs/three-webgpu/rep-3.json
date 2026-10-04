@@ -5,17 +5,15 @@
   "entry": {
     "id": "three-webgpu",
     "name": "three-webgpu / reference cube",
-    "labels": [
-      {
-        "key": "renderer",
-        "value": "three-webgpu"
-      },
-      {
-        "key": "scene",
-        "value": "cube"
-      }
-    ],
-    "url": "http://127.0.0.1:4401/demo"
+    "url": "http://127.0.0.1:4401/demo",
+    "renderer": {
+      "id": "three-webgpu",
+      "name": "Three WebGPU"
+    },
+    "scene": {
+      "id": "cube",
+      "name": "Reference cube"
+    }
   },
   "repetition": 3,
   "config": {

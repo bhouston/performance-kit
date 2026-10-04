@@ -5,7 +5,13 @@ describe('schema boundaries', () => {
     const result = {
       schemaVersion: 1,
       runId: 'test',
-      entry: { id: 'cube', name: 'Cube', labels: [], url: '/cube' },
+      entry: {
+        id: 'cube',
+        name: 'Cube',
+        renderer: { id: 'three-base', name: 'Three Base' },
+        scene: { id: 'cube', name: 'Cube' },
+        url: '/cube',
+      },
       config: { durationMs: 100, warmupMs: 0, vsync: 'on' },
       harness: { startSent: 1000, teardown: 1200 },
       reporter: { frames: [{ cpuStart: 1050, cpuEnd: 1051 }] },
@@ -46,7 +52,14 @@ describe('schema boundaries', () => {
     ).toBe(false);
   });
   it('rejects duplicate and unsafe filesystem entry IDs', () => {
-    const entry = { id: 'cube', name: 'Cube', url: '/cube', durationMs: 100 };
+    const entry = {
+      id: 'cube',
+      name: 'Cube',
+      renderer: { id: 'three-base', name: 'Three Base' },
+      scene: { id: 'cube', name: 'Cube' },
+      url: '/cube',
+      durationMs: 100,
+    };
     expect(() => assertSuite({ schemaVersion: 1, name: 'test', entries: [entry, entry] })).toThrow('duplicate');
     expect(() => assertSuite({ schemaVersion: 1, name: 'test', entries: [{ ...entry, id: '../escape' }] })).toThrow();
   });
@@ -70,5 +83,77 @@ describe('schema boundaries', () => {
         payload: { at: 1, bytes: new ArrayBuffer(8) },
       }),
     ).toBe(true);
+  });
+});
+
+import { validateSuite, validateManifest, type NamedEntity, type NamedEntityType, type SuiteEntry } from './index.js';
+describe('named renderer and scene references', () => {
+  const renderer: NamedEntityType = { id: 'three-base', name: 'Three Base renderer' };
+  const scene: NamedEntity = { id: 'cornell-metallic', name: 'Cornell metallic sphere' };
+  const entry: SuiteEntry = {
+    id: 'metallic--three-base',
+    name: 'Metallic sphere with Three Base',
+    renderer,
+    scene,
+    url: '/renderer',
+    durationMs: 100,
+  };
+  const suite = { schemaVersion: 1, name: 'Named entities', entries: [entry] };
+  const result = {
+    schemaVersion: 1,
+    runId: 'test',
+    entry: {
+      id: entry.id,
+      name: entry.name,
+      renderer,
+      scene,
+      url: entry.url,
+    },
+    config: { durationMs: 100, warmupMs: 0, vsync: 'on' },
+    harness: { startSent: 1, teardown: 2 },
+    reporter: { frames: [] },
+    status: 'ok',
+  };
+  it('accepts friendly names with spaces in suites, results, and manifest snapshots', () => {
+    expect(validateSuite(suite)).toBe(true);
+    expect(validateRunResult(result)).toBe(true);
+    expect(
+      validateManifest({
+        schemaVersion: 1,
+        runSetId: 'set',
+        createdAt: '2026-10-04T00:00:00Z',
+        suite,
+        schedule: [{ entryId: entry.id, repetition: 1 }],
+      }),
+    ).toBe(true);
+  });
+  it.each(['.', '..', '../escape', 'three/new', 'three\\new', 'renderer with spaces', ''])(
+    'rejects unsafe named entity ID %j',
+    (id) => {
+      for (const key of ['renderer', 'scene'] as const) {
+        expect(validateSuite({ ...suite, entries: [{ ...entry, [key]: { id, name: 'Friendly name' } }] })).toBe(false);
+        expect(validateRunResult({ ...result, entry: { ...result.entry, [key]: { id, name: 'Friendly name' } } })).toBe(
+          false,
+        );
+      }
+    },
+  );
+  it('rejects unexpected entity properties and missing or empty display names', () => {
+    for (const reference of [{ ...renderer, extra: true }, { id: renderer.id }, { ...renderer, name: '' }]) {
+      expect(validateSuite({ ...suite, entries: [{ ...entry, renderer: reference }] })).toBe(false);
+      expect(validateRunResult({ ...result, entry: { ...result.entry, renderer: reference } })).toBe(false);
+    }
+  });
+  it('requires both named entities and rejects the removed label system', () => {
+    for (const key of ['renderer', 'scene'] as const) {
+      const missingEntry = { ...entry };
+      const missingResultEntry = { ...result.entry };
+      delete missingEntry[key];
+      delete missingResultEntry[key];
+      expect(validateSuite({ ...suite, entries: [missingEntry] })).toBe(false);
+      expect(validateRunResult({ ...result, entry: missingResultEntry })).toBe(false);
+    }
+    expect(validateSuite({ ...suite, entries: [{ ...entry, labels: [] }] })).toBe(false);
+    expect(validateRunResult({ ...result, entry: { ...result.entry, labels: [] } })).toBe(false);
   });
 });
