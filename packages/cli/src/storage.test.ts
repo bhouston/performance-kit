@@ -1,15 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import sharp from 'sharp';
 import { RESULT_AVIF } from './capture.js';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { writeRun, scanResults, safeEntryId, updateLatest } from './storage.js';
+import { writeRun, scanResults, safeEntryId, updateLatest, buildReport } from './storage.js';
 import type { RunResult } from 'performance-kit-schema';
 const result: RunResult = {
   schemaVersion: 1,
   runId: 'test',
-  entry: { id: 'cube', name: 'Cube', labels: [], url: 'http://127.0.0.1/cube' },
+  entry: {
+    id: 'cube',
+    name: 'Cube',
+    renderer: { id: 'test', name: 'Test Renderer' },
+    scene: { id: 'cube', name: 'Spinning cube' },
+    url: 'http://127.0.0.1/cube',
+  },
   repetition: 1,
   config: { durationMs: 100, warmupMs: 0, vsync: 'on' },
   harness: { startSent: 1000, teardown: 1200 },
@@ -51,4 +57,20 @@ describe('raw append-only storage', () => {
   it('rejects traversal entry ids', () => {
     for (const id of ['../escape', 'a/b', '..', '/tmp/x']) expect(() => safeEntryId(id)).toThrow();
   });
+});
+
+it('exports the optional README and removes it when rebuilding without one', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'performance-readme-'));
+  const site = await mkdtemp(join(tmpdir(), 'performance-site-'));
+  try {
+    await writeFile(join(root, 'README.md'), '# My benchmark\n\nSuite description.');
+    await buildReport(root, site);
+    expect(await readFile(join(site, 'README.md'), 'utf8')).toBe('# My benchmark\n\nSuite description.');
+    await rm(join(root, 'README.md'));
+    await buildReport(root, site);
+    await expect(readFile(join(site, 'README.md'))).rejects.toMatchObject({ code: 'ENOENT' });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(site, { recursive: true, force: true });
+  }
 });

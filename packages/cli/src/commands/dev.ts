@@ -1,8 +1,8 @@
 import type { CommandModule } from 'yargs';
 import { startServer } from '../server.js';
 const command: CommandModule = {
-  command: 'serve',
-  describe: 'Serve a static performance report without watching results',
+  command: 'dev',
+  describe: 'Watch result files and refresh the performance report automatically',
   builder: (yargs) =>
     yargs
       .option('out', { type: 'string', default: 'performance-results' })
@@ -13,8 +13,9 @@ const command: CommandModule = {
       out: args.out as string,
       host: args.host as string,
       port: args.port as number,
+      watchResults: true,
     });
-    console.log(`Performance report: ${server.url}`);
+    console.log(`Performance development report: ${server.url}\nWatching: ${args.out}`);
     for (const signal of ['SIGINT', 'SIGTERM'] as const)
       process.once(signal, () => {
         void server.close();

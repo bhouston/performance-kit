@@ -1,0 +1,16 @@
+{
+  "additionalProperties": false,
+  "type": "object",
+  "required": ["id", "name"],
+  "properties": {
+    "id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "type": "string"
+    },
+    "name": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "$id": "https://bhouston.github.io/performance-kit/schema/v1/named-entity.schema.json"
+}

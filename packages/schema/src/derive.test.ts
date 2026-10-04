@@ -6,7 +6,13 @@ function run(step = 10): RunResult {
   return {
     schemaVersion: 1,
     runId: 'test',
-    entry: { id: 'cube', name: 'Cube', labels: [], url: 'http://localhost/' },
+    entry: {
+      id: 'cube',
+      name: 'Cube',
+      renderer: { id: 'three-base', name: 'Three Base' },
+      scene: { id: 'cube', name: 'Cube' },
+      url: 'http://localhost/',
+    },
     config: { durationMs: 100, warmupMs: 20, vsync: 'off' },
     harness: { startSent: 1000, teardown: 1300, runSent: 1100, runEndObserved: 1208 },
     clockSync: { samples: [{ t0: 1000, t1: 1007, t2: 1008, t3: 1005 }] },

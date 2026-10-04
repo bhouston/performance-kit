@@ -52,7 +52,16 @@ describe('runner lifecycle', () => {
           schemaVersion: 1,
           name: 'runner',
           defaults: { repetitions: 2, captureAfterWarmup: false, warmupMs: 0 },
-          entries: [{ id: 'cube', name: 'Cube', url: 'http://127.0.0.1/cube', durationMs: 100 }],
+          entries: [
+            {
+              id: 'cube',
+              name: 'Cube',
+              renderer: { id: 'test', name: 'Test Renderer' },
+              scene: { id: 'cube', name: 'Spinning cube' },
+              url: 'http://127.0.0.1/cube',
+              durationMs: 100,
+            },
+          ],
         }),
       );
       const result = await runSuite({ suite, out: join(root, 'results'), port: 0, cooldownMs: 0, recycle: 1 });
@@ -77,7 +86,16 @@ describe('runner lifecycle', () => {
           schemaVersion: 1,
           name: 'failures',
           defaults: { repetitions: 1, captureAfterWarmup: false, warmupMs: 0 },
-          entries: [{ id: 'cube', name: 'Cube', url: 'http://127.0.0.1/cube', durationMs: 100 }],
+          entries: [
+            {
+              id: 'cube',
+              name: 'Cube',
+              renderer: { id: 'test', name: 'Test Renderer' },
+              scene: { id: 'cube', name: 'Spinning cube' },
+              url: 'http://127.0.0.1/cube',
+              durationMs: 100,
+            },
+          ],
         }),
       );
       scenario.environment = { gpuAdapter: { description: 'SwiftShader selected by renderer' } };

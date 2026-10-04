@@ -5,17 +5,15 @@
   "entry": {
     "id": "three-base",
     "name": "three-base / reference cube",
-    "labels": [
-      {
-        "key": "renderer",
-        "value": "three-base"
-      },
-      {
-        "key": "scene",
-        "value": "cube"
-      }
-    ],
-    "url": "http://127.0.0.1:4401/demo"
+    "url": "http://127.0.0.1:4401/demo",
+    "renderer": {
+      "id": "three-base",
+      "name": "Three Base"
+    },
+    "scene": {
+      "id": "cube",
+      "name": "Reference cube"
+    }
   },
   "repetition": 2,
   "config": {

@@ -5,16 +5,13 @@ export interface ScheduledRun {
 }
 export function scheduleSuite(
   suite: Suite,
-  options: { filter?: string[]; seed?: number; repetitions?: number } = {},
+  options: { renderer?: string[]; scene?: string[]; seed?: number; repetitions?: number } = {},
 ): ScheduledRun[] {
-  const entries = suite.entries.filter((entry) =>
-    (options.filter ?? []).every((filter) => {
-      const separator = filter.indexOf('=');
-      if (separator < 1) throw new Error(`Invalid label filter ${filter}; use key=value`);
-      return entry.labels?.some(
-        (label) => label.key === filter.slice(0, separator) && label.value === filter.slice(separator + 1),
-      );
-    }),
+  if (options.seed !== undefined && !Number.isFinite(options.seed)) throw new Error('seed must be finite');
+  const entries = suite.entries.filter(
+    (entry) =>
+      (!options.renderer?.length || options.renderer.includes(entry.renderer.id)) &&
+      (!options.scene?.length || options.scene.includes(entry.scene.id)),
   );
   let state = options.seed ?? 1;
   const shuffle = (values: Entry[]) => {

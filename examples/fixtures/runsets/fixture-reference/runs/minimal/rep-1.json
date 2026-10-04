@@ -4,13 +4,15 @@
   "entry": {
     "id": "minimal",
     "name": "Minimal frame-only reporter",
-    "labels": [
-      {
-        "key": "scene",
-        "value": "minimal"
-      }
-    ],
-    "url": "http://127.0.0.1:4401/demo"
+    "url": "http://127.0.0.1:4401/demo",
+    "renderer": {
+      "id": "minimal",
+      "name": "Minimal renderer"
+    },
+    "scene": {
+      "id": "minimal",
+      "name": "Minimal frame-only scene"
+    }
   },
   "config": {
     "durationMs": 100,

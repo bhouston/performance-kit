@@ -1,9 +1,10 @@
 import { stat } from 'node:fs/promises';
 import { compareRuns, type RunResult } from 'performance-kit-schema';
 import { scanResults } from './storage.js';
+type Axis = 'renderer' | 'scene';
 export interface ComparisonGroup {
   runs: RunResult[];
-  selectorKey?: string;
+  selectorKey?: Axis;
   directory: boolean;
 }
 export async function selectComparisonGroup(value: string, root: string): Promise<ComparisonGroup> {
@@ -14,16 +15,16 @@ export async function selectComparisonGroup(value: string, root: string): Promis
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
   const split = value.indexOf('=');
-  if (split < 1) throw new Error(`Comparison selector must be a directory or key=value: ${value}`);
-  const selectorKey = value.slice(0, split);
+  const axis = value.slice(0, split);
+  if (split < 1 || !['renderer', 'scene'].includes(axis) || !value.slice(split + 1))
+    throw new Error(`Comparison selector must be a directory, renderer=<id>, or scene=<id>: ${value}`);
+  const selectorKey = axis as Axis;
   return {
     directory: false,
     selectorKey,
     runs: (await scanResults(root)).runs
       .map((run) => run.result)
-      .filter((run) =>
-        run.entry.labels.some((label) => label.key === selectorKey && label.value === value.slice(split + 1)),
-      ),
+      .filter((run) => run.entry[selectorKey].id === value.slice(split + 1)),
   };
 }
 export function compareGroups(
@@ -35,19 +36,13 @@ export function compareGroups(
   if (options.iterations !== undefined && (!Number.isInteger(options.iterations) || options.iterations < 1))
     throw new Error('iterations must be a positive integer');
   if (options.seed !== undefined && !Number.isFinite(options.seed)) throw new Error('seed must be finite');
-  // Only the selected comparison axes may differ; retain all other workload labels.
-  const excluded = new Set([a.selectorKey, b.selectorKey]);
-  const keysA = new Set(a.runs.flatMap((run) => run.entry.labels.map((label) => label.key)));
-  const commonKeys = [...new Set(b.runs.flatMap((run) => run.entry.labels.map((label) => label.key)))]
-    .filter((key) => keysA.has(key) && !excluded.has(key))
-    .toSorted();
   const directoryPair = a.directory && b.directory;
-  const keyFor = (run: RunResult) =>
-    directoryPair
-      ? run.entry.id
-      : JSON.stringify(
-          commonKeys.map((key) => [key, run.entry.labels.find((label) => label.key === key)?.value ?? '']),
-        );
+  if (!directoryPair && a.selectorKey && b.selectorKey && a.selectorKey !== b.selectorKey)
+    throw new Error('Use the same renderer or scene axis for both comparison groups');
+  const selectedAxis = a.selectorKey ?? b.selectorKey;
+  if (!directoryPair && !selectedAxis) throw new Error('Choose a renderer or scene comparison axis');
+  const heldAxis: Axis = selectedAxis === 'renderer' ? 'scene' : 'renderer';
+  const keyFor = (run: RunResult) => (directoryPair ? run.entry.id : run.entry[heldAxis].id);
   const collect = (group: ComparisonGroup) => {
     const grouped = new Map<string, RunResult[]>();
     for (const run of group.runs) {
@@ -58,22 +53,18 @@ export function compareGroups(
       for (const [key, runs] of grouped)
         if (new Set(runs.map((run) => run.entry.id)).size > 1)
           throw new Error(
-            `Ambiguous workload ${key}: add labels to distinguish entries or compare run-set directories`,
+            `Ambiguous ${heldAxis} ${key}: select one renderer configuration and scene per workload, or compare run-set directories`,
           );
     return grouped;
   };
   const left = collect(a),
-    right = collect(b);
-  const comparisons = [];
+    right = collect(b),
+    comparisons = [];
   for (const [workload, runsA] of left) {
     const runsB = right.get(workload);
     if (!runsB) continue;
     comparisons.push({
-      workload: directoryPair
-        ? workload
-        : commonKeys
-            .map((key) => `${key}=${runsA[0].entry.labels.find((label) => label.key === key)?.value ?? ''}`)
-            .join(', ') || `${runsA[0].entry.id} / ${runsB[0].entry.id}`,
+      workload: directoryPair ? workload : `${heldAxis}=${workload}`,
       entryA: runsA[0].entry.id,
       entryB: runsB[0].entry.id,
       ...compareRuns(runsA, runsB, options),

@@ -14,7 +14,8 @@ import { startServer } from './server.js';
 export interface RunOptions {
   suite: string;
   out: string;
-  filter?: string[];
+  renderer?: string[];
+  scene?: string[];
   headful?: boolean;
   live?: boolean;
   host?: string;
@@ -87,7 +88,7 @@ export async function runSuite(options: RunOptions): Promise<{ runset: string; r
       chromeFlags: flags,
     } as Environment,
   };
-  const server = await startServer({ out, host: options.host, port: options.port });
+  const server = await startServer({ out, host: options.host, port: options.port, live: options.live });
   let rendererServer: Awaited<ReturnType<typeof startServer>> | undefined;
   let browser: Browser | undefined;
   const results: RunResult[] = [];
@@ -255,7 +256,7 @@ export async function runSuite(options: RunOptions): Promise<{ runset: string; r
         schemaVersion: 1,
         runId,
         suiteName: suite.name,
-        entry: { id: entry.id, name: entry.name, labels: entry.labels ?? [], url: entry.url },
+        entry: { id: entry.id, name: entry.name, renderer: entry.renderer, scene: entry.scene, url: entry.url },
         repetition,
         config: {
           durationMs: entry.durationMs,
