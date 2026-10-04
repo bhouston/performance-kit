@@ -92,7 +92,7 @@ function Timeline({ runs, kind = 'intervals' }: { runs: RunResult[]; kind?: 'int
               ctx.setLineDash([4, 5]);
               ctx.strokeStyle = '#7a8da680';
               ctx.beginPath();
-              const runStart = r.reporter.runStart ?? origin;
+              const runStart = r.reporter.runStart ?? d.intervals[0]?.t ?? origin;
               ctx.moveTo(x(runStart - origin), y(v));
               ctx.lineTo(width - 14, y(v));
               ctx.stroke();
@@ -237,7 +237,28 @@ function Detail({ items }: { items: RecordItem[] }) {
             <tbody>
               {d.blocks.map((b, i) => (
                 <tr key={i}>
-                  <td>{b.sources.join(', ')}</td>
+                  <td>
+                    {b.sources.join(', ')}
+                    {(run.reporter.blocks ?? [])
+                      .filter((raw) => raw.start < b.end && raw.end > b.start)
+                      .flatMap((raw) => raw.scripts ?? [])
+                      .map((script, index) => (
+                        <div className="script-attribution" key={index}>
+                          <strong>{script.sourceFunctionName || script.invoker || 'anonymous script'}</strong> ·{' '}
+                          {number(script.end - script.start)}
+                          <span>
+                            {script.sourceURL || 'source unavailable'}
+                            {script.sourceCharPosition === undefined ? '' : ` @${script.sourceCharPosition}`}
+                          </span>
+                          {script.invoker && (
+                            <span>
+                              {script.invokerType ? `${script.invokerType}: ` : ''}
+                              {script.invoker}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                  </td>
                   <td>{number(b.end - b.start)}</td>
                 </tr>
               ))}
@@ -341,17 +362,18 @@ function Card({ items }: { items: RecordItem[] }) {
   );
 }
 function Comparison({ items }: { items: RecordItem[] }) {
-  const keys = [...new Set(items.flatMap((i) => i.result.entry.labels.map((l) => l.key)))];
+  const successful = items.filter((i) => i.result.status === 'ok');
+  const keys = [...new Set(successful.flatMap((i) => i.result.entry.labels.map((l) => l.key)))];
   const [key, setKey] = useState(keys.includes('renderer') ? 'renderer' : (keys[0] ?? '')),
     [a, setA] = useState(''),
     [b, setB] = useState('');
   const values = [
-    ...new Set(items.flatMap((i) => i.result.entry.labels.filter((l) => l.key === key).map((l) => l.value))),
+    ...new Set(successful.flatMap((i) => i.result.entry.labels.filter((l) => l.key === key).map((l) => l.value))),
   ];
   let rows: React.ReactNode[] = [];
   if (a && b && a !== b) {
     const groups = new Map<string, { a: RunResult[]; b: RunResult[] }>();
-    for (const i of items) {
+    for (const i of successful) {
       const value = i.result.entry.labels.find((l) => l.key === key)?.value;
       if (value !== a && value !== b) continue;
       const identity = i.result.entry.labels

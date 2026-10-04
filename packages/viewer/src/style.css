@@ -461,3 +461,20 @@ footer {
   background: #b5adff;
   transform: translateX(-50%);
 }
+.script-attribution {
+  margin-top: 8px;
+  padding-left: 8px;
+  border-left: 2px solid #735faa;
+  color: #93a2bc;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.script-attribution strong {
+  font-weight: 500;
+  color: #c4b6fa;
+}
+.script-attribution span {
+  display: block;
+  margin-top: 3px;
+  font-size: 9px;
+}

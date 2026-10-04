@@ -462,7 +462,18 @@
       {
         "start": 1600,
         "end": 1800,
-        "source": "longtask"
+        "source": "loaf",
+        "scripts": [
+          {
+            "start": 1605,
+            "end": 1760,
+            "sourceURL": "http://127.0.0.1:4401/renderer.js",
+            "invoker": "Window.requestAnimationFrame",
+            "invokerType": "user-callback",
+            "sourceFunctionName": "compilePipelines",
+            "sourceCharPosition": 4250
+          }
+        ]
       }
     ],
     "watchdogTicks": [
