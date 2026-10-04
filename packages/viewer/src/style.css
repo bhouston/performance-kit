@@ -603,11 +603,26 @@ footer a:hover {
   font-size: 11px;
   color: var(--muted-foreground);
 }
-.back-link {
-  background: var(--muted);
-  border: 1px solid var(--border);
-  padding: 8px 12px;
-  margin-top: 20px;
+.breadcrumbs {
+  min-width: 0;
+}
+.breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.breadcrumbs [aria-current='page'] {
+  overflow-wrap: anywhere;
+}
+.breadcrumbs .brand {
+  white-space: normal;
+}
+.frame-detail {
+  margin-top: 32px;
 }
 .detail .timeline {
   height: 240px;

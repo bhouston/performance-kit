@@ -20,6 +20,7 @@ const run: RunResult = {
   reporter: {
     startReceived: 0,
     ready: 100,
+    renderStart: 100,
     runStart: 100,
     runEnd: 1000,
     frames: [100, 110, 140].map((cpuStart) => ({ cpuStart, cpuEnd: cpuStart + 1 })),
@@ -28,7 +29,7 @@ const run: RunResult = {
 };
 it('uses means rather than medians, max absolute jitter and worst delay', () => {
   expect(cardMetrics(processRun(run))).toEqual({
-    setupTime: 100,
+    initTime: 100,
     avgFrameRate: 50,
     maxJitter: 10,
     worstResponsiveness: 64,
@@ -36,7 +37,7 @@ it('uses means rather than medians, max absolute jitter and worst delay', () => 
   });
   const empty = processRun({ ...run, reporter: { frames: [] } });
   expect(cardMetrics(empty)).toEqual({
-    setupTime: undefined,
+    initTime: undefined,
     avgFrameRate: undefined,
     maxJitter: undefined,
     worstResponsiveness: undefined,
@@ -47,7 +48,7 @@ it('sorts each metric in both directions and leaves missing observations last', 
   const a = processRun(run),
     b = structuredClone(a),
     empty = processRun({ ...run, reporter: { frames: [] } });
-  b.statistics.setupSeconds = 0.2;
+  b.statistics.initSeconds = 0.2;
   b.statistics.averageFps = 25;
   b.statistics.maxJitterSeconds = 0.02;
   b.statistics.worstResponsivenessSeconds = 0.2;
@@ -58,12 +59,12 @@ it('sorts each metric in both directions and leaves missing observations last', 
     expect(compareMetrics(empty, empty, key, 'bestFirst')).toBe(0);
   }
 });
-it('grades exact setup and jitter boundaries and established FPS/responsiveness categories', () => {
-  expect([249, 250, 499, 500].map((v) => gradeMetric('setupTime', v))).toEqual(['good', 'warn', 'warn', 'bad']);
+it('grades exact init and jitter boundaries and established FPS/responsiveness categories', () => {
+  expect([249, 250, 499, 500].map((v) => gradeMetric('initTime', v))).toEqual(['good', 'warn', 'warn', 'bad']);
   expect([4.9, 5, 14.9, 15].map((v) => gradeMetric('maxJitter', v))).toEqual(['good', 'warn', 'warn', 'bad']);
   expect([60, 30, 20].map((v) => gradeMetric('avgFrameRate', v))).toEqual(['good', 'warn', 'bad']);
   expect([49, 50, 299, 300].map((v) => gradeMetric('worstResponsiveness', v))).toEqual(['good', 'warn', 'warn', 'bad']);
-  expect(gradeMetric('setupTime', undefined)).toBe('none');
+  expect(gradeMetric('initTime', undefined)).toBe('none');
   expect(gradeMetric('maxJitter', NaN)).toBe('none');
 });
 it('uses configured colors and deterministic legible fallback including prototype names', () => {
@@ -84,7 +85,7 @@ it('roundtrips shareable sort, detail and filter URLs and defaults invalid optio
   expect(
     readRoute(new URL('https://example.test/?result=x&sort=avgFrameRate&dir=worstFirst&q=cube&renderer=a&scene=b')),
   ).toEqual({ result: 'x', sort: 'avgFrameRate', direction: 'worstFirst', query: 'cube', renderer: 'a', scene: 'b' });
-  expect(readRoute(new URL('https://example.test/?sort=__proto__&dir=no')).sort).toBe('setupTime');
+  expect(readRoute(new URL('https://example.test/?sort=__proto__&dir=no')).sort).toBe('initTime');
   const a = processRun(run),
     b = structuredClone(a);
   b.entry.renderer.id = 'a-b';

@@ -13,7 +13,7 @@ const temp = await mkdtemp(join(tmpdir(), 'viewer-smoke-'));
 let browser, server;
 try {
   for (let i = 0; i < 8; i++) {
-    const setup = 100 + i * 100,
+    const init = 100 + i * 100,
       frame = 10 + i * 5;
     await writeRun(temp, {
       schemaVersion: 1,
@@ -29,26 +29,26 @@ try {
       harness: { startSent: 1000, teardown: 6000 },
       reporter: {
         startReceived: 1000,
-        ready: 1000 + setup,
-        renderStart: 1000 + setup,
-        runStart: 1000 + setup,
+        ready: 1000 + init,
+        renderStart: 1000 + init,
+        runStart: 1000 + init,
         runEnd: 6000,
         frames: Array.from({ length: 80 }, (_, n) => ({
-          cpuStart: 1000 + setup + n * frame,
-          cpuEnd: 1001 + setup + n * frame,
+          cpuStart: 1000 + init + n * frame,
+          cpuEnd: 1001 + init + n * frame,
         })),
         phases: [
           {
             id: 0,
             phase: 'assets',
             start: { clock: 'reporter', t: 1000 },
-            end: { clock: 'reporter', t: 1000 + setup / 2 },
+            end: { clock: 'reporter', t: 1000 + init / 2 },
           },
           {
             id: 1,
             phase: 'assets',
-            start: { clock: 'reporter', t: 1000 + setup / 2 },
-            end: { clock: 'reporter', t: 1000 + setup },
+            start: { clock: 'reporter', t: 1000 + init / 2 },
+            end: { clock: 'reporter', t: 1000 + init },
           },
         ],
         watchdogTicks: [1000, 1016, 1050, 1400, 1416],
@@ -67,12 +67,13 @@ try {
     window.__chartLabels = [];
     const original = CanvasRenderingContext2D.prototype.fillText;
     CanvasRenderingContext2D.prototype.fillText = function (text, ...args) {
-      window.__chartLabels.push(String(text));
+      window.__chartLabels.push({ text: String(text), chart: this.canvas.getAttribute('aria-label') });
       return original.call(this, text, ...args);
     };
   });
   await page.goto(server.url, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.card');
+  assert.equal(await page.$$eval('.card:first-of-type .phase-legend span', (nodes) => nodes.length), 1);
   const ids = () => page.$$eval('.card', (nodes) => nodes.map((n) => n.id));
   assert.equal((await ids())[0], '10-renderer-0-cube');
   await page.select('[aria-label="Sort cards"]', 'avgFrameRate');
@@ -90,16 +91,32 @@ try {
   assert.match(page.url(), /result=10-renderer-7-cube/);
   assert.equal(await page.$$('.card').then((nodes) => nodes.length), 0);
   const detailURL = page.url();
-  await page.waitForFunction(() => window.__chartLabels.some((x) => x.startsWith('average ')));
-  const labels = await page.evaluate(() => window.__chartLabels);
+  assert.equal(await page.$eval('.detail h2', (node) => node.textContent), 'Init Responsiveness · lateness in ms');
+  assert.equal(await page.$$eval('.init-detail tbody tr', (nodes) => nodes.length), 2);
+  assert.equal(await page.$eval('.init-detail tbody tr', (node) => node.textContent.replace(/\s/g, '')), 'assets800ms');
+  assert.equal(await page.$eval('.init-detail section', (node) => node.textContent), 'Rendering');
+  assert.equal(await page.$eval('.frame-detail section:last-child', (node) => node.textContent), 'Init phases');
+  assert.equal(
+    await page.$eval('[aria-label="Breadcrumb"] [aria-current="page"]', (node) => node.textContent),
+    'Renderer 7 · Cube',
+  );
+  await page.waitForFunction(() => window.__chartLabels.some((x) => x.text.startsWith('average ')));
+  const draws = await page.evaluate(() => window.__chartLabels);
+  const labels = draws.map((x) => x.text);
+  assert(!draws.filter((x) => x.chart.startsWith('Init Responsiveness')).some((x) => /^(average |P95 )/.test(x.text)));
   assert(labels.some((x) => x.startsWith('P95 ')));
-  assert(labels.some((x) => x.startsWith('setup done ')));
+  assert(labels.some((x) => x.startsWith('init done ')));
   assert(labels.some((x) => x.endsWith('fps')));
   assert(labels.includes('1'));
   assert(labels.includes('2'));
   assert(labels.includes('ms'));
-  await page.screenshot({ path: join(temp, 'detail.png'), fullPage: true });
-  await page.click('.back-link');
+  await page.screenshot({
+    path: process.env.PERFORMANCE_KIT_SCREENSHOT_DIR
+      ? join(process.env.PERFORMANCE_KIT_SCREENSHOT_DIR, 'detail.png')
+      : join(temp, 'detail.png'),
+    fullPage: true,
+  });
+  await page.click('[aria-label="Breadcrumb"] a');
   await page.waitForSelector('.card');
   await page.waitForFunction((expected) => Math.abs(window.scrollY - expected) < 3, {}, scroll);
   assert.equal((await ids())[0], '10-renderer-7-cube');

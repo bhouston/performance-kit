@@ -50,7 +50,7 @@ it('preserves inbound arrival order despite reversed validator delays and transf
         start: { clock: 'reporter', t: at },
         end: { clock: 'reporter', t: at + 3 },
       });
-      emit('ready', { at });
+      emit('ready', { at, renderStart: at });
     }
     if (message.type === 'capture') emit('capture', { at, bytes: Uint8Array.of(137, 80, 78, 71).buffer });
     if (message.type === 'run') {
@@ -82,7 +82,7 @@ it('preserves inbound arrival order despite reversed validator delays and transf
       entryId: 'demo',
       params: {},
       durationMs: 10,
-      setupTimeoutMs: 2000,
+      initTimeoutMs: 2000,
       capture: true,
       width: 640,
       height: 480,

@@ -20,7 +20,7 @@ export type ClockSource = 'harness' | 'reporter' | 'gpu';
 export const GpuStampSchema = object({ clock: Type.Literal('gpu'), ns });
 export type GpuStamp = Static<typeof GpuStampSchema>;
 export const PhaseMarkSchema = object({
-  id: Type.Optional(Type.Integer({ minimum: 0 })),
+  id: Type.Integer({ minimum: 0 }),
   phase: Type.String({ minLength: 1 }),
   start: StampSchema,
   end: Type.Optional(StampSchema),
@@ -55,8 +55,6 @@ export const BlockRecordSchema = object({
   source: Type.Union((['longtask', 'loaf', 'watchdog'] as const).map((v) => Type.Literal(v))),
 });
 export type BlockRecord = Static<typeof BlockRecordSchema>;
-export const ClockSyncSampleSchema = object({ t0: time, t1: time, t2: time, t3: time });
-export type ClockSyncSample = Static<typeof ClockSyncSampleSchema>;
 export const MessageLogItemSchema = object({
   type: Type.String(),
   direction: Type.Union([Type.Literal('toReporter'), Type.Literal('toHarness')]),
@@ -106,7 +104,6 @@ export const EntrySchema = object({
   scene: NamedEntitySchema,
   url: Type.String({ minLength: 1 }),
   durationMs: positive,
-  warmupMs: Type.Optional(Type.Number({ minimum: 0, deprecated: true })),
   params: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
 });
 export type Entry = Static<typeof EntrySchema>;
@@ -121,12 +118,9 @@ export const SuiteSchema = Type.Object(
     phaseColors: Type.Optional(PhaseColorsSchema),
     defaults: Type.Optional(
       object({
-        warmupMs: Type.Optional(Type.Number({ minimum: 0, deprecated: true })),
-        repetitions: Type.Optional(Type.Integer({ minimum: 1, maximum: 1, deprecated: true })),
         order: Type.Optional(Type.Union([Type.Literal('interleaved'), Type.Literal('sequential')])),
-        setupTimeoutMs: Type.Optional(positive),
+        initTimeoutMs: Type.Optional(positive),
         capture: Type.Optional(Type.Boolean()),
-        captureAfterWarmup: Type.Optional(Type.Boolean({ deprecated: true })),
         vsync: Type.Optional(vsync),
         networkProfile: Type.Optional(Type.String({ minLength: 1 })),
       }),
@@ -171,11 +165,9 @@ export const RunResultSchema = Type.Object(
       scene: NamedEntitySchema,
       url: Type.String(),
     }),
-    repetition: Type.Optional(Type.Integer({ minimum: 1 })),
     networkProfile: Type.Optional(NetworkProfileSchema),
     config: object({
       durationMs: positive,
-      warmupMs: Type.Optional(time),
       vsync,
       phaseColors: Type.Optional(PhaseColorsSchema),
     }),
@@ -188,7 +180,6 @@ export const RunResultSchema = Type.Object(
       captureSent: Type.Optional(time),
       teardown: time,
     }),
-    clockSync: Type.Optional(object({ samples: Type.Array(ClockSyncSampleSchema) })),
     messages: Type.Optional(Type.Array(MessageLogItemSchema)),
     reporter: object({
       downloads: Type.Optional(Type.Array(DownloadReportSchema)),
@@ -197,7 +188,6 @@ export const RunResultSchema = Type.Object(
       phases: Type.Optional(Type.Array(PhaseMarkSchema)),
       ready: Type.Optional(time),
       renderStart: Type.Optional(time),
-      warmupStart: Type.Optional(time),
       runStart: Type.Optional(time),
       runEnd: Type.Optional(time),
       frames: Type.Array(FrameRecordSchema),
@@ -241,10 +231,10 @@ export const ProcessedResultSchema = Type.Object(
       mad: optionalNumber,
       typicalFps: optionalNumber,
       tailFps: optionalNumber,
-      setupSeconds: optionalNumber,
+      initSeconds: optionalNumber,
       unaccountedSeconds: optionalNumber,
-      setupMaxBlockSeconds: displayNumber,
-      setupBlockedSeconds: displayNumber,
+      initMaxBlockSeconds: displayNumber,
+      initBlockedSeconds: displayNumber,
       cpuMedian: optionalNumber,
       cpuP95: optionalNumber,
       gpuMedian: optionalNumber,
@@ -373,7 +363,7 @@ export const protocolSchemas = {
     }),
   ),
   phase: envelope('phase', PhaseMarkSchema),
-  ready: envelope('ready', object({ at: time, renderStart: Type.Optional(time) })),
+  ready: envelope('ready', object({ at: time, renderStart: time })),
   captureResponse: envelope('capture', object({ at: time, bytes: Type.Unsafe<ArrayBuffer>({}) })),
   runEnd: envelope(
     'runEnd',

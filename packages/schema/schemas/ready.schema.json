@@ -30,7 +30,7 @@
     "payload": {
       "additionalProperties": false,
       "type": "object",
-      "required": ["at"],
+      "required": ["at", "renderStart"],
       "properties": {
         "at": {
           "minimum": 0,

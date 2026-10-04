@@ -41,13 +41,7 @@ const select = (points: Point[], limit = MAX_TIMELINE_POINTS) =>
 /** All statistics use complete measured raw data; only display indices are reduced. */
 export function processRun(run: RunResult): ProcessedResult {
   const full = deriveRun(run);
-  const reporterOrigin =
-    run.reporter.startReceived ??
-    run.reporter.hello ??
-    run.reporter.phases?.find((phase) => phase.start.clock === 'reporter')?.start.t ??
-    run.reporter.frames[0]?.cpuStart ??
-    run.reporter.ready ??
-    0;
+  const reporterOrigin = run.reporter.startReceived ?? 0;
   const local = (stamp: number) => seconds(stamp - reporterOrigin);
   const eligible =
     run.status !== 'ok' && run.reporter.runStart === undefined
@@ -105,8 +99,8 @@ export function processRun(run: RunResult): ProcessedResult {
     intervalCount: full.intervals.length,
     cpuSampleCount: full.cpu.length,
     gpuSampleCount: full.gpu.length,
-    setupMaxBlockSeconds: full.setupMaxBlockMs / 1000,
-    setupBlockedSeconds: full.setupBlockedMs / 1000,
+    initMaxBlockSeconds: full.initMaxBlockMs / 1000,
+    initBlockedSeconds: full.initBlockedMs / 1000,
     phaseDurations: Object.create(null) as Record<string, number>,
     ...optional('averageFrameSeconds', durationSeconds(full.average)),
     ...optional('averageFps', full.average ? 1000 / full.average : undefined),
@@ -119,7 +113,7 @@ export function processRun(run: RunResult): ProcessedResult {
     ...optional('mad', durationSeconds(full.mad)),
     ...optional('typicalFps', full.fps),
     ...optional('tailFps', full.p95 ? 1000 / full.p95 : undefined),
-    ...optional('setupSeconds', durationSeconds(full.setupMs)),
+    ...optional('initSeconds', durationSeconds(full.initMs)),
     ...optional('unaccountedSeconds', durationSeconds(full.unaccountedMs)),
     ...optional(
       'cpuMedian',
@@ -227,12 +221,7 @@ export function processRun(run: RunResult): ProcessedResult {
       timeUnit: 'seconds',
       valueUnit: 'seconds',
       maxTime,
-      ...optional(
-        'renderStart',
-        (run.reporter.renderStart ?? run.reporter.ready) === undefined
-          ? undefined
-          : local((run.reporter.renderStart ?? run.reporter.ready)!),
-      ),
+      ...optional('renderStart', run.reporter.renderStart === undefined ? undefined : local(run.reporter.renderStart!)),
       ...optional('ready', run.reporter.ready === undefined ? undefined : local(run.reporter.ready)),
       ...optional('runStart', run.reporter.runStart === undefined ? undefined : local(run.reporter.runStart)),
       ...optional('runEnd', run.reporter.runEnd === undefined ? undefined : local(run.reporter.runEnd)),
@@ -258,13 +247,11 @@ export function processRun(run: RunResult): ProcessedResult {
           return typeof value === 'number' ? [[key, value / 1000]] : [];
         }),
       ),
-      messages: (run.messages ?? [])
-        .filter((message) => !['syncPing', 'syncPong'].includes(message.type))
-        .map((message) => ({
-          ...message,
-          sentAt: { ...message.sentAt, t: message.sentAt.t / 1000 },
-          receivedAt: { ...message.receivedAt, t: message.receivedAt.t / 1000 },
-        })),
+      messages: (run.messages ?? []).map((message) => ({
+        ...message,
+        sentAt: { ...message.sentAt, t: message.sentAt.t / 1000 },
+        receivedAt: { ...message.receivedAt, t: message.receivedAt.t / 1000 },
+      })),
     },
     attribution,
   };

@@ -66,11 +66,7 @@ export async function startServer(options: {
       for (const pair of pairs) {
         const [rendererId, sceneId] = pair.split('/');
         const needsProcessing = paths.some(
-          (path) =>
-            path === pair ||
-            path === `${pair}/metrics.json` ||
-            path === `${pair}/raw.json` ||
-            path === `${pair}/screenshot.avif`,
+          (path) => path === pair || path === `${pair}/metrics.json` || path === `${pair}/screenshot.avif`,
         );
         let ready = !needsProcessing;
         if (needsProcessing)

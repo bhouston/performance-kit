@@ -13,12 +13,13 @@ function run(step = 10): RunResult {
       scene: { id: 'cube', name: 'Cube' },
       url: 'http://localhost/',
     },
-    config: { durationMs: 100, warmupMs: 20, vsync: 'off' },
+    config: { durationMs: 100, vsync: 'off' },
     harness: { startSent: 1000, teardown: 1300, runSent: 1100, runEndObserved: 1208 },
-    clockSync: { samples: [{ t0: 1000, t1: 1007, t2: 1008, t3: 1005 }] },
     reporter: {
       hello: 1005,
+      startReceived: 1005,
       ready: 1055,
+      renderStart: 1055,
       runStart: 1105,
       runEnd: 1205,
       frames: [
@@ -46,18 +47,18 @@ describe('read-time statistics', () => {
     expect(d.mad).toBe(0);
     expect(d.gpu[0]!.value).toBe(2);
   });
-  it('uses client setup timing without cross-clock calculations', () => {
+  it('uses client init timing without cross-clock calculations', () => {
     const d = deriveRun(run());
-    expect(d.setupMs).toBe(50);
+    expect(d.initMs).toBe(50);
     expect(d).not.toHaveProperty('discrepancies');
     expect(d).not.toHaveProperty('offsetMs');
   });
-  it('excludes warmup and clips responsiveness blocks to setup', () => {
+  it('excludes warmup and clips responsiveness blocks to init', () => {
     const d = deriveRun(run());
     expect(d.intervals).toHaveLength(10);
     expect(d.watchdog[1]!.value).toBe(64);
-    expect(d.setupBlockedMs).toBe(18);
-    expect(d.setupMaxBlockMs).toBe(18);
+    expect(d.initBlockedMs).toBe(18);
+    expect(d.initMaxBlockMs).toBe(18);
   });
   it('merges overlapping observer/watchdog records without double-counting', () => {
     expect(

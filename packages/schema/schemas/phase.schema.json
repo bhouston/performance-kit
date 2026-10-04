@@ -30,7 +30,7 @@
     "payload": {
       "additionalProperties": false,
       "type": "object",
-      "required": ["phase", "start"],
+      "required": ["id", "phase", "start"],
       "properties": {
         "id": {
           "minimum": 0,

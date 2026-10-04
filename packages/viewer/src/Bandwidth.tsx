@@ -101,16 +101,16 @@ export function Bandwidth({ result, maxTime, minTime }: { result: ProcessedResul
               <title>{resources[lane.resourceIndex]!.url} · waiting</title>
             </line>
           ))}
-          {(result.timeline.renderStart ?? result.timeline.ready) !== undefined && (
+          {result.timeline.renderStart !== undefined && (
             <line
-              x1={x((result.timeline.renderStart ?? result.timeline.ready)! * 1000 - origin)}
-              x2={x((result.timeline.renderStart ?? result.timeline.ready)! * 1000 - origin)}
+              x1={x(result.timeline.renderStart! * 1000 - origin)}
+              x2={x(result.timeline.renderStart! * 1000 - origin)}
               y1="10"
               y2={height - 28}
               stroke="currentColor"
               strokeDasharray="5 3"
             >
-              <title>Setup done</title>
+              <title>Init done</title>
             </line>
           )}
         </g>

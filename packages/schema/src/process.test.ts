@@ -22,16 +22,17 @@ function raw(count = 5000): RunResult {
       scene: { id: 'cube', name: 'Reference cube' },
       url: '/cube',
     },
-    config: { durationMs: 60000, warmupMs: 0, vsync: 'on' },
+    config: { durationMs: 60000, vsync: 'on' },
     harness: { startSent: 1000, teardown: time + 20 },
-    clockSync: { samples: [{ t0: 1000, t1: 1005, t2: 1006, t3: 1001 }] },
     reporter: {
       hello: 1000,
+      startReceived: 1000,
       ready: 1005,
+      renderStart: 1005,
       runStart: 1010,
       runEnd: time + 1,
       frames,
-      phases: [{ phase: 'load', start: { clock: 'reporter', t: 1005 }, end: { clock: 'reporter', t: 1009 } }],
+      phases: [{ id: 0, phase: 'load', start: { clock: 'reporter', t: 1005 }, end: { clock: 'reporter', t: 1009 } }],
       watchdogTicks: Array.from({ length: count }, (_, index) => 1005 + index * 16),
     },
     status: 'ok',
@@ -50,9 +51,9 @@ describe('offline raw preprocessing', () => {
       ['p99', 'p99'],
       ['iqr', 'iqr'],
       ['mad', 'mad'],
-      ['setupSeconds', 'setupMs'],
-      ['setupMaxBlockSeconds', 'setupMaxBlockMs'],
-      ['setupBlockedSeconds', 'setupBlockedMs'],
+      ['initSeconds', 'initMs'],
+      ['initMaxBlockSeconds', 'initMaxBlockMs'],
+      ['initBlockedSeconds', 'initBlockedMs'],
     ] as const)
       expect(metrics.statistics[output]).toBe(derived[source] === undefined ? undefined : derived[source]! / 1000);
     expect(metrics.statistics.typicalFps).toBe(derived.fps);
@@ -180,6 +181,7 @@ describe('offline raw preprocessing', () => {
     expect(metrics.timeline.frameSeconds[0]).toBe((input.reporter.frames[0]!.cpuStart - 1000) / 1000);
     expect(metrics.timeline.phases[0]).toEqual({ phase: 'load', start: 0.005, end: 0.009, durationSeconds: 0.004 });
     input.reporter.phases![0] = {
+      id: 0,
       phase: 'load',
       start: { clock: 'harness', t: 1000 },
       end: { clock: 'harness', t: 1004 },
@@ -222,21 +224,22 @@ describe('offline raw preprocessing', () => {
     const metrics = processRun(input);
     expect(metrics.timeline.watchdogSeconds.length).toBeGreaterThan(4);
     expect(metrics.timeline.watchdogSeconds.some((point) => point > metrics.timeline.ready!)).toBe(true);
-    expect(metrics.statistics.setupBlockedSeconds).toBe(deriveRun(input).setupBlockedMs / 1000);
+    expect(metrics.statistics.initBlockedSeconds).toBe(deriveRun(input).initBlockedMs / 1000);
     delete input.reporter.ready;
     expect(processRun(input).timeline.watchdogIndices.length).toBeLessThanOrEqual(512);
     expect(processRun(input).timeline.watchdogIndices.length).toBeGreaterThan(3);
   });
-  it('uses an internal reporter origin for minimal results without sync', () => {
+  it('handles results collected before start is received', () => {
     const input = raw(2);
-    delete input.clockSync;
     delete input.reporter.hello;
+    delete input.reporter.startReceived;
+    delete input.reporter.renderStart;
     delete input.reporter.ready;
     delete input.reporter.phases;
     const metrics = processRun(input);
-    expect(metrics.timeline.frameSeconds[0]).toBe(0);
+    expect(metrics.timeline.frameSeconds[0]).toBe(input.reporter.frames[0]!.cpuStart / 1000);
     expect(metrics.statistics).not.toHaveProperty('offsetSeconds');
-    expect(metrics.statistics.setupSeconds).toBeUndefined();
+    expect(metrics.statistics.initSeconds).toBeUndefined();
   });
   it('keeps timeout statistics empty while showing available warmup frames', () => {
     const input = raw();
@@ -252,6 +255,7 @@ describe('offline raw preprocessing', () => {
   it('bounds detail payloads and preserves full-data phase totals', () => {
     const input = raw(2);
     input.reporter.phases = Array.from({ length: 300 }, (_, index) => ({
+      id: index,
       phase: 'load',
       start: { clock: 'reporter', t: 1005 + index * 10 },
       end: { clock: 'reporter', t: 1010 + index * 10 },
@@ -371,7 +375,7 @@ it('keeps arbitrary duplicate phases, explicit render start and complete-data he
   expect(result.timeline.phases.map((p) => p.phase)).toEqual(['assets', 'assets', '__proto__']);
   expect(result.statistics.phaseDurations.assets).toBe(0.02);
   expect(result.statistics.phaseDurations.__proto__).toBe(0.003);
-  expect(result.statistics.setupSeconds).toBe(0.02); // Overlaps are not added to setup time.
+  expect(result.statistics.initSeconds).toBe(0.02); // Overlaps are not added to init time.
   expect(result.timeline.renderStart).toBe(0.02);
   expect(result.statistics.averageFrameSeconds).toBe(0.02);
   expect(result.statistics.averageFps).toBe(50);

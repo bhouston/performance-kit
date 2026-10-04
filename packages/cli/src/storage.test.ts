@@ -24,8 +24,7 @@ const result: RunResult = {
     scene: { id: 'cube', name: 'Spinning cube' },
     url: '/cube',
   },
-  repetition: 1,
-  config: { durationMs: 100, warmupMs: 0, vsync: 'off' },
+  config: { durationMs: 100, vsync: 'off' },
   harness: { startSent: 1000, teardown: 1200 },
   reporter: { frames: [] },
   status: 'timeout',
@@ -75,51 +74,16 @@ it('writes only flat AVIF/metrics files atomically and overwrites a workload', a
     await rm(root, { recursive: true, force: true });
   }
 });
-it('reprocesses legacy display metrics into numeric seconds arrays without changing raw data', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'performance-migrate-'));
+it('rejects old metrics instead of migrating raw files', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'performance-format-'));
   try {
-    const measured: RunResult = {
-      ...structuredClone(result),
-      status: 'ok',
-      reporter: {
-        ready: 1010,
-        runStart: 1030,
-        runEnd: 1100,
-        frames: [
-          { cpuStart: 1010, cpuEnd: 1012 },
-          { cpuStart: 1030, cpuEnd: 1033 },
-          { cpuStart: 1047, cpuEnd: 1051 },
-          { cpuStart: 1064, cpuEnd: 1068 },
-        ],
-      },
-    };
-    await writeRun(root, measured);
-    const rawFile = join(root, 'test/cube/raw.json');
-    const rawBefore = JSON.stringify(measured);
-    await writeFile(rawFile, rawBefore);
-    const metricsFile = join(root, 'test/cube/metrics.json');
-    await writeFile(
-      metricsFile,
-      JSON.stringify({
-        schemaVersion: 1,
-        timeline: { intervals: [{ t: 791.2299, value: 137.1 }] },
-      }),
-    );
-    await processResults(root);
-    const metrics = JSON.parse(await readFile(metricsFile, 'utf8'));
-    expect(metrics.timeline.timeUnit).toBe('seconds');
-    expect(metrics.timeline.valueUnit).toBe('seconds');
-    expect(metrics.timeline.frameSeconds.length).toBeGreaterThan(1);
-    expect(metrics.timeline.frameSeconds.every((value: unknown) => typeof value === 'number')).toBe(true);
-    expect(metrics.timeline).not.toHaveProperty('intervals');
-    expect(metrics.timeline).not.toHaveProperty('cpu');
-    expect(metrics.timeline).not.toHaveProperty('gpu');
-    expect(metrics.timeline).not.toHaveProperty('watchdog');
-    expect(metrics.statistics.intervalCount).toBe(2);
-    expect(await readFile(rawFile, 'utf8')).toBe(rawBefore);
-    const before = (await stat(metricsFile)).mtimeMs;
-    await processResults(root);
-    expect((await stat(metricsFile)).mtimeMs).toBe(before);
+    const file = await writeRun(root, structuredClone(result));
+    await writeFile(file, JSON.stringify({ schemaVersion: 1 }));
+    await writeFile(join(root, 'test/cube/raw.json'), JSON.stringify(result));
+    await expect(processResults(root)).rejects.toThrow('Invalid processed result');
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ schemaVersion: 1 });
+    await rm(file);
+    expect((await scanResults(root)).runs).toEqual([]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

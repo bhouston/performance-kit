@@ -21,7 +21,7 @@ pnpm cli run --suite examples/demo-suite.json --renderer-root examples --out res
 pnpm cli dev --out results
 ```
 
-Open the URL printed by `dev` (usually <http://localhost:4400>). The [demo suite](examples/demo-suite.json) renders a WebGL cube and a variant with deliberate setup and frame stalls. The viewer shows captures, setup phases, frame timelines, and detailed timing measurements. Search entries, filter renderer configurations or scenes, and sort by FPS, tail latency, jitter, or setup time.
+Open the URL printed by `dev` (usually <http://localhost:4400>). The [demo suite](examples/demo-suite.json) renders a WebGL cube and a variant with deliberate init and frame stalls. The viewer shows captures, init phases, frame timelines, and detailed timing measurements. Search entries, filter renderer configurations or scenes, and sort by FPS, tail latency, jitter, or init time.
 
 The runner rejects software GPUs by default. Use `--allow-software` for functional checks only; those results do not establish hardware GPU performance. Add `--headful` to run visible Chrome or `--executable-path <path>` to choose an installed Chrome.
 
@@ -113,7 +113,7 @@ Static reports work on ordinary HTTP hosting, including a subdirectory. Serve th
 
 ## Instrument a renderer
 
-The reporter is a no-op outside an authorized harness. Register setup and capture handlers, then bracket each frame:
+The reporter is a no-op outside an authorized harness. Register init and capture handlers, then bracket each frame:
 
 ```ts
 import { createReporter } from 'performance-kit-reporter';
@@ -149,15 +149,15 @@ GPU helpers and the Three adapter are available in the reporter's `gpu` and `thr
 
 CPU timestamps are high-resolution epoch milliseconds tagged by domain. GPU values are decimal nanoseconds on a separate clock. Client durations are calculated within the client clock. Harness send/receive timestamps and clock-tagged message receipts are retained independently in the metrics timing context, in epoch seconds. There are no synchronization pings, offset/drift estimates or delivery discrepancy tables.
 
-Cards summarize median FPS, tail latency, jitter, and setup time. FPS is the reciprocal of the median frame interval. Durations use readable units: short costs appear in milliseconds, while longer setup and phase durations appear in seconds.
+Cards summarize median FPS, tail latency, jitter, and init time. FPS is the reciprocal of the median frame interval. Durations use readable units: short costs appear in milliseconds, while longer init and phase durations appear in seconds.
 
 Frame pacing uses consecutive frame-start differences inside the measured window. CPU submit time and GPU cost appear separately. Percentiles use linear interpolation at `(n − 1) p`; jitter is p75 − p25, and MAD is available in run details. Statistics use every measured raw sample before display series are reduced.
 
-Timeline axes use elapsed seconds from the client start receipt. Every visible card timeline uses the longest timeline among the current filtered cards as its shared horizontal scale. Hovering a line chart shows elapsed time and the nearest frame's frame interval. Details include viewer-calculated framerate and setup watchdog responsiveness histograms, plus a Phases table with startup phase durations and total client setup time.
+Timeline axes use elapsed seconds from the client start receipt. Every visible card timeline uses the longest timeline among the current filtered cards as its shared horizontal scale. Hovering a line chart shows elapsed time and the nearest frame's frame interval. Details include viewer-calculated framerate and init watchdog responsiveness histograms, plus a Phases table with startup phase durations and total client init time.
 
 Metrics store consecutive `frameSeconds`, aligned `cpuSeconds` and `gpuSeconds`, and selected extrema indices for display. Exact measured `measuredIntervalSeconds` support CLI comparisons and browser histogram calculations without relying on rounded display timestamps. All durations use seconds; FPS remains frames per second. No histogram bins are stored on disk.
 
-The CLI computes exact summaries before writing metrics for both static and development reports. Frame-time colors transition green at 16.7 ms, yellow at 33.3 ms, and red at 50 ms; responsiveness transitions at 50, 100, and 300 ms. Run `pnpm cli process --out results` to migrate historical raw results to version 2 metrics and rebuild the index. Existing raw files are retained during migration; new metrics are canonical once migrated. Version 1 metrics without their historical raw data require a new benchmark run. Legacy suite `warmupMs` is accepted but ignored; `repetitions: 1` is accepted for compatibility, and larger values are rejected. Use `capture` to control the end-of-run screenshot; the old `captureAfterWarmup` option is accepted as a fallback.
+The CLI computes exact summaries before writing metrics for both static and development reports. Frame-time colors transition green at 16.7 ms, yellow at 33.3 ms, and red at 50 ms; responsiveness transitions at 50, 100, and 300 ms. Run `pnpm cli process --out results` to rebuild the index from current metrics. Only the current metrics format is supported; regenerate older results with a new benchmark run. Use `capture` to control the end-of-run screenshot.
 
 CLI A/B comparisons match scenes when comparing renderer IDs, renderer configurations when comparing scene IDs, and stable entry IDs when comparing directories. They pool frames for Mann–Whitney U and bootstrap whole runs for the median-ratio confidence interval, preserving within-run correlation. Mixed vsync modes are rejected. Small or single-run samples retain their uncertainty rather than establishing a speedup.
 

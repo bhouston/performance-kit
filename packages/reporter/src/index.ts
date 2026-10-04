@@ -68,7 +68,7 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
   let captureCallback: Parameters<Reporter['onCapture']>[0] | undefined;
   let seq = 0;
   let receivedSeq = -1;
-  let state: 'idle' | 'setup' | 'ready' | 'running' | 'ended' = 'idle';
+  let state: 'idle' | 'init' | 'ready' | 'running' | 'ended' = 'idle';
   const phases: PhaseMark[] = [];
   const ticks: number[] = [];
   const incomingMessages: MessageLogItem[] = [];
@@ -242,7 +242,7 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
         case 'start':
           if (state !== 'idle') throw new Error('start received outside idle state');
           startReceived = t1;
-          state = 'setup';
+          state = 'init';
           beginObservers();
           await startCallback?.(value.payload);
           break;
@@ -327,8 +327,8 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
     },
     ready() {
       if (!enabled || disposed) return;
-      if (state !== 'setup') {
-        error('ready requires setup state');
+      if (state !== 'init') {
+        error('ready requires init state');
         return;
       }
       loaded = true;

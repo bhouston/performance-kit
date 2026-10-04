@@ -35,9 +35,11 @@ describe('benchmark scheduling', () => {
   });
   it('has reproducible seeded order', () => {
     expect(scheduleSuite(suite, { seed: 17 })).toEqual(scheduleSuite(suite, { seed: 17 }));
-    expect(
-      scheduleSuite({ ...suite, defaults: { order: 'sequential', repetitions: 1 } }).map((run) => run.entry.id),
-    ).toEqual(['a', 'b', 'c']);
+    expect(scheduleSuite({ ...suite, defaults: { order: 'sequential' } }).map((run) => run.entry.id)).toEqual([
+      'a',
+      'b',
+      'c',
+    ]);
   });
   it('rejects known software adapters and records vsync flags', () => {
     expect(isSoftwareAdapter({ description: 'ANGLE SwiftShader' })).toBe(true);

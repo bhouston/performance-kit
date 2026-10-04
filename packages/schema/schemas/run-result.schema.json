@@ -61,10 +61,6 @@
         }
       }
     },
-    "repetition": {
-      "minimum": 1,
-      "type": "integer"
-    },
     "networkProfile": {
       "additionalProperties": false,
       "type": "object",
@@ -111,10 +107,6 @@
       "properties": {
         "durationMs": {
           "exclusiveMinimum": 0,
-          "type": "number"
-        },
-        "warmupMs": {
-          "minimum": 0,
           "type": "number"
         },
         "vsync": {
@@ -266,39 +258,6 @@
         "teardown": {
           "minimum": 0,
           "type": "number"
-        }
-      }
-    },
-    "clockSync": {
-      "additionalProperties": false,
-      "type": "object",
-      "required": ["samples"],
-      "properties": {
-        "samples": {
-          "type": "array",
-          "items": {
-            "additionalProperties": false,
-            "type": "object",
-            "required": ["t0", "t1", "t2", "t3"],
-            "properties": {
-              "t0": {
-                "minimum": 0,
-                "type": "number"
-              },
-              "t1": {
-                "minimum": 0,
-                "type": "number"
-              },
-              "t2": {
-                "minimum": 0,
-                "type": "number"
-              },
-              "t3": {
-                "minimum": 0,
-                "type": "number"
-              }
-            }
-          }
         }
       }
     },
@@ -549,7 +508,7 @@
           "items": {
             "additionalProperties": false,
             "type": "object",
-            "required": ["phase", "start"],
+            "required": ["id", "phase", "start"],
             "properties": {
               "id": {
                 "minimum": 0,
@@ -613,10 +572,6 @@
           "type": "number"
         },
         "renderStart": {
-          "minimum": 0,
-          "type": "number"
-        },
-        "warmupStart": {
           "minimum": 0,
           "type": "number"
         },

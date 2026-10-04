@@ -161,8 +161,8 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
         entryId: entry.id,
         params: entry.params ?? {},
         durationMs: entry.durationMs,
-        setupTimeoutMs: suite.defaults?.setupTimeoutMs ?? 60000,
-        capture: suite.defaults?.capture ?? suite.defaults?.captureAfterWarmup ?? true,
+        initTimeoutMs: suite.defaults?.initTimeoutMs ?? 60000,
+        capture: suite.defaults?.capture ?? true,
         width: options.width ?? 1920,
         height: options.height ?? 1080,
         isolation: options.isolation ?? 'iframe',
@@ -182,7 +182,7 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
           );
           await page.goto(url.href, {
             waitUntil: 'domcontentloaded',
-            timeout: input.setupTimeoutMs,
+            timeout: input.initTimeoutMs,
           });
           payload = await deadline(
             page.evaluate(
@@ -193,14 +193,14 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
                   }
                 ).__performanceKitResult,
             ),
-            input.setupTimeoutMs * 3 + input.durationMs + 10000,
+            input.initTimeoutMs * 3 + input.durationMs + 10000,
             'renderer page run',
           );
         } else {
           await page.goto(server.url + '/harness');
           payload = await deadline(
             page.evaluate(harnessRun, input),
-            input.setupTimeoutMs * 3 + input.durationMs + 10000,
+            input.initTimeoutMs * 3 + input.durationMs + 10000,
             'iframe run',
           );
         }
