@@ -23,17 +23,15 @@ export function scheduleSuite(
     }
     return values;
   };
-  const repetitions = options.repetitions ?? suite.defaults?.repetitions ?? 3;
-  if (!Number.isInteger(repetitions) || repetitions < 1) throw new Error('Repetitions must be a positive integer');
-  const runs: ScheduledRun[] = [];
-  if (suite.defaults?.order === 'sequential') {
-    for (const entry of shuffle([...entries]))
-      for (let repetition = 1; repetition <= repetitions; repetition++) runs.push({ entry, repetition });
-  } else {
-    for (let repetition = 1; repetition <= repetitions; repetition++)
-      for (const entry of shuffle([...entries])) runs.push({ entry, repetition });
+  const repetitions = options.repetitions ?? suite.defaults?.repetitions ?? 1;
+  if (repetitions !== 1) throw new Error('Flat result storage requires exactly one repetition');
+  const identities = new Set<string>();
+  for (const entry of suite.entries) {
+    const identity = entry.renderer.id + '/' + entry.scene.id;
+    if (identities.has(identity)) throw new Error(`Duplicate renderer/scene workload: ${identity}`);
+    identities.add(identity);
   }
-  return runs;
+  return shuffle([...entries]).map((entry) => ({ entry, repetition: 1 }));
 }
 export const chromeFlags = (vsync: 'on' | 'off') => [
   '--disable-background-timer-throttling',

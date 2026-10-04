@@ -1,0 +1,589 @@
+{
+  "additionalProperties": false,
+  "$id": "https://bhouston.github.io/performance-kit/schema/v1/processed-result.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "runId",
+    "screenshot",
+    "entry",
+    "config",
+    "status",
+    "statistics",
+    "timeline",
+    "histogram",
+    "attribution"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1,
+      "type": "number"
+    },
+    "runId": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "suiteName": {
+      "type": "string"
+    },
+    "screenshot": {
+      "type": "boolean"
+    },
+    "entry": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": ["id", "name", "renderer", "scene", "url"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "renderer": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": ["id", "name"],
+          "properties": {
+            "id": {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+              "type": "string"
+            },
+            "name": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        },
+        "scene": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": ["id", "name"],
+          "properties": {
+            "id": {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+              "type": "string"
+            },
+            "name": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "config": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": ["durationMs", "warmupMs", "vsync"],
+      "properties": {
+        "durationMs": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "warmupMs": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "vsync": {
+          "anyOf": [
+            {
+              "const": "on",
+              "type": "string"
+            },
+            {
+              "const": "off",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    "environment": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "userAgent",
+        "gpuTimestampsAvailable",
+        "crossOriginIsolated",
+        "devicePixelRatio",
+        "chromeFlags",
+        "host"
+      ],
+      "properties": {
+        "userAgent": {
+          "type": "string"
+        },
+        "gpuAdapter": {
+          "additionalProperties": false,
+          "type": "object",
+          "properties": {
+            "vendor": {
+              "type": "string"
+            },
+            "architecture": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            }
+          }
+        },
+        "api": {
+          "anyOf": [
+            {
+              "const": "webgpu",
+              "type": "string"
+            },
+            {
+              "const": "webgl2",
+              "type": "string"
+            },
+            {
+              "const": "other",
+              "type": "string"
+            }
+          ]
+        },
+        "gpuTimestampsAvailable": {
+          "type": "boolean"
+        },
+        "crossOriginIsolated": {
+          "type": "boolean"
+        },
+        "devicePixelRatio": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "canvasSize": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": ["width", "height"],
+          "properties": {
+            "width": {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            "height": {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            }
+          }
+        },
+        "chromeFlags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "host": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": ["os", "cpu"],
+          "properties": {
+            "os": {
+              "type": "string"
+            },
+            "cpu": {
+              "type": "string"
+            },
+            "machineId": {
+              "type": "string"
+            }
+          }
+        },
+        "gitCommit": {
+          "type": "string"
+        }
+      }
+    },
+    "status": {
+      "anyOf": [
+        {
+          "const": "ok",
+          "type": "string"
+        },
+        {
+          "const": "timeout",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "type": "string"
+        }
+      ]
+    },
+    "error": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": ["message"],
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        }
+      }
+    },
+    "statistics": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "frameCount",
+        "intervalCount",
+        "cpuSampleCount",
+        "gpuSampleCount",
+        "setupMaxBlockMs",
+        "setupBlockedMs",
+        "phaseDurations"
+      ],
+      "properties": {
+        "frameCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "intervalCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cpuSampleCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "gpuSampleCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "median": {
+          "type": "number"
+        },
+        "p95": {
+          "type": "number"
+        },
+        "p99": {
+          "type": "number"
+        },
+        "iqr": {
+          "type": "number"
+        },
+        "mad": {
+          "type": "number"
+        },
+        "fps": {
+          "type": "number"
+        },
+        "setupMs": {
+          "type": "number"
+        },
+        "reporterSetupMs": {
+          "type": "number"
+        },
+        "hiddenStartupMs": {
+          "type": "number"
+        },
+        "unaccountedMs": {
+          "type": "number"
+        },
+        "setupMaxBlockMs": {
+          "type": "number"
+        },
+        "setupBlockedMs": {
+          "type": "number"
+        },
+        "offsetMs": {
+          "type": "number"
+        },
+        "driftMs": {
+          "type": "number"
+        },
+        "cpuMedian": {
+          "type": "number"
+        },
+        "cpuP95": {
+          "type": "number"
+        },
+        "gpuMedian": {
+          "type": "number"
+        },
+        "gpuP95": {
+          "type": "number"
+        },
+        "phaseDurations": {
+          "additionalProperties": false,
+          "type": "object",
+          "properties": {
+            "load": {
+              "type": "number"
+            },
+            "process": {
+              "type": "number"
+            },
+            "compile": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "timeline": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "timeUnit",
+        "valueUnit",
+        "maxTime",
+        "frameSeconds",
+        "cpuMs",
+        "gpuMs",
+        "frameIndices",
+        "watchdogSeconds",
+        "watchdogIndices",
+        "watchdogPeriodMs",
+        "phases",
+        "blocks",
+        "discrepancies"
+      ],
+      "properties": {
+        "timeUnit": {
+          "const": "seconds",
+          "type": "string"
+        },
+        "valueUnit": {
+          "const": "milliseconds",
+          "type": "string"
+        },
+        "maxTime": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "ready": {
+          "type": "number"
+        },
+        "runStart": {
+          "type": "number"
+        },
+        "runEnd": {
+          "type": "number"
+        },
+        "frameSeconds": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "cpuMs": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "gpuMs": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "frameIndices": {
+          "maxItems": 1536,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "watchdogSeconds": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "watchdogIndices": {
+          "maxItems": 512,
+          "uniqueItems": true,
+          "type": "array",
+          "items": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "watchdogPeriodMs": {
+          "const": 16,
+          "type": "number"
+        },
+        "phases": {
+          "maxItems": 128,
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": ["phase", "start"],
+            "properties": {
+              "phase": {
+                "anyOf": [
+                  {
+                    "const": "load",
+                    "type": "string"
+                  },
+                  {
+                    "const": "process",
+                    "type": "string"
+                  },
+                  {
+                    "const": "compile",
+                    "type": "string"
+                  }
+                ]
+              },
+              "start": {
+                "type": "number"
+              },
+              "end": {
+                "type": "number"
+              },
+              "durationMs": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "blocks": {
+          "maxItems": 256,
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": ["start", "end", "durationMs", "sources"],
+            "properties": {
+              "start": {
+                "type": "number"
+              },
+              "end": {
+                "type": "number"
+              },
+              "durationMs": {
+                "type": "number"
+              },
+              "sources": {
+                "maxItems": 3,
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "discrepancies": {
+          "maxItems": 256,
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": ["name", "ms", "flagged"],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "ms": {
+                "type": "number"
+              },
+              "flagged": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "histogram": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": ["bins", "count", "maxCount"],
+      "properties": {
+        "bins": {
+          "maxItems": 40,
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": ["start", "end", "count"],
+            "properties": {
+              "start": {
+                "type": "number"
+              },
+              "end": {
+                "type": "number"
+              },
+              "count": {
+                "minimum": 0,
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxCount": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      }
+    },
+    "attribution": {
+      "maxItems": 256,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["start", "end", "durationMs"],
+        "properties": {
+          "start": {
+            "type": "number"
+          },
+          "end": {
+            "type": "number"
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "sourceURL": {
+            "type": "string"
+          },
+          "invoker": {
+            "type": "string"
+          },
+          "invokerType": {
+            "type": "string"
+          },
+          "sourceFunctionName": {
+            "type": "string"
+          },
+          "sourceCharPosition": {
+            "type": "number"
+          }
+        }
+      }
+    }
+  }
+}

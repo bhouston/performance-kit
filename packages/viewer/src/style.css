@@ -334,17 +334,6 @@ th {
   font-size: 10px;
   color: var(--muted-foreground);
 }
-.raw-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-top: 20px;
-  font-size: 12px;
-}
-.raw-links a {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
 .muted {
   font-size: 12px;
   color: var(--muted-foreground);
@@ -474,9 +463,6 @@ footer a:hover {
   }
   .detail-heading select {
     font-size: 12px;
-  }
-  .raw-links {
-    gap: 12px;
   }
 }
 

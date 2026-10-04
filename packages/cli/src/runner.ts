@@ -1,15 +1,15 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { mkdir } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { cpus, platform, release } from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import puppeteer, { type Browser } from 'puppeteer';
 import { ulid } from 'ulid';
-import { assertMessageToHarness, assertManifest } from 'performance-kit-schema';
+import { assertMessageToHarness } from 'performance-kit-schema';
 import type { RunResult, Environment } from 'performance-kit-schema';
 import { harnessRun } from './harness.js';
 import { chromeFlags, isSoftwareAdapter, scheduleSuite } from './schedule.js';
-import { loadSuite, safeEntryId, updateLatest, writeRun } from './storage.js';
+import { loadSuite, safeEntryId, writeRun } from './storage.js';
 import { startServer } from './server.js';
 export interface RunOptions {
   suite: string;
@@ -23,7 +23,6 @@ export interface RunOptions {
   rendererRoot?: string;
   rendererPort?: number;
   seed?: number;
-  repetitions?: number;
   cooldownMs?: number;
   recycle?: number;
   width?: number;
@@ -46,7 +45,7 @@ export async function deadline<T>(promise: Promise<T>, timeoutMs: number, phase:
     clearTimeout(timer);
   }
 }
-export async function runSuite(options: RunOptions): Promise<{ runset: string; results: RunResult[] }> {
+export async function runSuite(options: RunOptions): Promise<{ out: string; results: RunResult[] }> {
   for (const [name, value] of [
     ['width', options.width],
     ['height', options.height],
@@ -62,31 +61,20 @@ export async function runSuite(options: RunOptions): Promise<{ runset: string; r
   if (!schedule.length) throw new Error('No suite entries match the filters');
   for (const { entry } of schedule) safeEntryId(entry.id);
   const out = resolve(options.out);
-  const runSetId = `${new Date().toISOString().replace(/[:.]/g, '-')}_${ulid()}`;
-  const runset = join(out, 'runsets', runSetId);
-  await mkdir(runset, { recursive: true });
+  await mkdir(out, { recursive: true });
   const flags = chromeFlags(suite.defaults?.vsync ?? 'on');
   const host = { os: `${platform()} ${release()}`, cpu: cpus()[0]?.model ?? 'unknown' };
   let gitCommit: string | undefined;
   try {
     gitCommit = (await promisify(execFile)('git-dedup', ['rev-parse', 'HEAD'])).stdout.trim();
   } catch {}
-  const manifest = {
-    schemaVersion: 1,
-    runSetId,
-    createdAt: new Date().toISOString(),
-    suite,
-    schedule: schedule.map(({ entry, repetition }) => ({ entryId: entry.id, repetition })),
-    ...(options.seed === undefined ? {} : { seed: options.seed }),
-    gitCommit,
-    environment: {
-      userAgent: 'pending browser launch',
-      gpuTimestampsAvailable: false,
-      crossOriginIsolated: false,
-      devicePixelRatio: 1,
-      host,
-      chromeFlags: flags,
-    } as Environment,
+  let environmentProbe: Environment = {
+    userAgent: '',
+    gpuTimestampsAvailable: false,
+    crossOriginIsolated: false,
+    devicePixelRatio: 1,
+    host,
+    chromeFlags: flags,
   };
   const server = await startServer({ out, host: options.host, port: options.port, live: options.live });
   let rendererServer: Awaited<ReturnType<typeof startServer>> | undefined;
@@ -100,7 +88,7 @@ export async function runSuite(options: RunOptions): Promise<{ runset: string; r
         port: options.rendererPort ?? 4401,
         rendererRoot: options.rendererRoot,
       });
-    console.log(`Report: ${server.url}${options.live ? '/live' : ''}\nRun set: ${runset}`);
+    console.log(`Report: ${server.url}${options.live ? '/live' : ''}\nResults: ${out}`);
     const launch = async () => {
       browser = await puppeteer.launch({
         headless: !options.headful,
@@ -129,8 +117,8 @@ export async function runSuite(options: RunOptions): Promise<{ runset: string; r
         };
       });
       await probe.close();
-      manifest.environment = {
-        ...manifest.environment,
+      environmentProbe = {
+        ...environmentProbe,
         userAgent: await browser.userAgent(),
         gpuTimestampsAvailable: gpu.gpuTimestampsAvailable,
         crossOriginIsolated: gpu.crossOriginIsolated,
@@ -144,8 +132,6 @@ export async function runSuite(options: RunOptions): Promise<{ runset: string; r
         );
     };
     await launch();
-    assertManifest(manifest);
-    await writeFile(join(runset, 'manifest.json'), JSON.stringify(manifest, null, 2), { flag: 'wx' });
     for (let i = 0; i < schedule.length; i++) {
       if (i > 0 && options.recycle && i % options.recycle === 0) {
         await browser?.close();
@@ -180,7 +166,6 @@ export async function runSuite(options: RunOptions): Promise<{ runset: string; r
         isolation: options.isolation ?? 'iframe',
       };
       console.log(`[${i + 1}/${schedule.length}] ${entry.id} repetition ${repetition}`);
-      server.publish({ type: 'start', entryId: entry.id, repetition });
       let payload: Awaited<ReturnType<typeof harnessRun>>;
       try {
         if (options.isolation === 'page') {
@@ -232,9 +217,9 @@ export async function runSuite(options: RunOptions): Promise<{ runset: string; r
       }
       const capture = payload.capture;
       const environment = {
-        ...manifest.environment,
-        userAgent: manifest.environment.userAgent,
-        gpuTimestampsAvailable: manifest.environment.gpuTimestampsAvailable,
+        ...environmentProbe,
+        userAgent: environmentProbe.userAgent,
+        gpuTimestampsAvailable: environmentProbe.gpuTimestampsAvailable,
         crossOriginIsolated: await deadline(
           page.evaluate(() => crossOriginIsolated),
           2000,
@@ -270,20 +255,19 @@ export async function runSuite(options: RunOptions): Promise<{ runset: string; r
         reporter: payload.reporter,
         status: payload.status,
         ...(payload.error ? { error: payload.error } : {}),
-        ...(capture ? { capture: { file: `rep-${repetition}.avif`, at: capture.at } } : {}),
+        ...(capture ? { capture: { file: 'screenshot.avif', at: capture.at } } : {}),
       } as RunResult;
       await page.close();
-      const file = await writeRun(runset, result, capture ? Uint8Array.from(capture.bytes) : undefined);
+      await writeRun(out, result, capture ? Uint8Array.from(capture.bytes) : undefined);
       results.push(result);
-      server.publish({ type: 'run', result, file });
+      server.publish({ type: 'resultChanged', rendererId: entry.renderer.id, sceneId: entry.scene.id });
       if (i + 1 < schedule.length) await new Promise((done) => setTimeout(done, options.cooldownMs ?? 2000));
     }
-    await updateLatest(out, runSetId);
   } finally {
     await browser?.close();
     await rendererServer?.close();
     await server.close();
   }
   if (options.failOnError !== false && results.some((result) => result.status !== 'ok')) process.exitCode = 1;
-  return { runset, results };
+  return { out, results };
 }

@@ -53,7 +53,7 @@ export function compareGroups(
       for (const [key, runs] of grouped)
         if (new Set(runs.map((run) => run.entry.id)).size > 1)
           throw new Error(
-            `Ambiguous ${heldAxis} ${key}: select one renderer configuration and scene per workload, or compare run-set directories`,
+            `Ambiguous ${heldAxis} ${key}: select one renderer configuration and scene per workload, or compare result directories`,
           );
     return grouped;
   };

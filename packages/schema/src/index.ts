@@ -84,7 +84,7 @@ export const SuiteSchema = Type.Object(
     defaults: Type.Optional(
       object({
         warmupMs: Type.Optional(time),
-        repetitions: Type.Optional(Type.Integer({ minimum: 1 })),
+        repetitions: Type.Optional(Type.Integer({ minimum: 1, maximum: 1 })),
         order: Type.Optional(Type.Union([Type.Literal('interleaved'), Type.Literal('sequential')])),
         setupTimeoutMs: Type.Optional(positive),
         captureAfterWarmup: Type.Optional(Type.Boolean()),
@@ -164,24 +164,107 @@ export const RunResultSchema = Type.Object(
   },
 );
 export type RunResult = Static<typeof RunResultSchema>;
-export const ManifestSchema = Type.Object(
+const displayNumber = Type.Number();
+const optionalNumber = Type.Optional(displayNumber);
+export const ProcessedResultSchema = Type.Object(
   {
     schemaVersion: Type.Literal(1),
-    runSetId: Type.String(),
-    createdAt: Type.String(),
-    suite: SuiteSchema,
-    schedule: Type.Array(object({ entryId: Type.String(), repetition: Type.Integer({ minimum: 1 }) })),
-    seed: Type.Optional(Type.Number()),
-    gitCommit: Type.Optional(Type.String()),
+    runId: Type.String({ minLength: 1 }),
+    suiteName: Type.Optional(Type.String()),
+    screenshot: Type.Boolean(),
+    entry: RunResultSchema.properties.entry,
+    config: RunResultSchema.properties.config,
     environment: Type.Optional(EnvironmentSchema),
+    status: RunResultSchema.properties.status,
+    error: RunResultSchema.properties.error,
+    statistics: object({
+      frameCount: Type.Integer({ minimum: 0 }),
+      intervalCount: Type.Integer({ minimum: 0 }),
+      cpuSampleCount: Type.Integer({ minimum: 0 }),
+      gpuSampleCount: Type.Integer({ minimum: 0 }),
+      median: optionalNumber,
+      p95: optionalNumber,
+      p99: optionalNumber,
+      iqr: optionalNumber,
+      mad: optionalNumber,
+      fps: optionalNumber,
+      setupMs: optionalNumber,
+      reporterSetupMs: optionalNumber,
+      hiddenStartupMs: optionalNumber,
+      unaccountedMs: optionalNumber,
+      setupMaxBlockMs: displayNumber,
+      setupBlockedMs: displayNumber,
+      offsetMs: optionalNumber,
+      driftMs: optionalNumber,
+      cpuMedian: optionalNumber,
+      cpuP95: optionalNumber,
+      gpuMedian: optionalNumber,
+      gpuP95: optionalNumber,
+      phaseDurations: object({ load: optionalNumber, process: optionalNumber, compile: optionalNumber }),
+    }),
+    timeline: object({
+      timeUnit: Type.Literal('seconds'),
+      valueUnit: Type.Literal('milliseconds'),
+      maxTime: Type.Number({ minimum: 0 }),
+      ready: optionalNumber,
+      runStart: optionalNumber,
+      runEnd: optionalNumber,
+      frameSeconds: Type.Array(displayNumber),
+      cpuMs: Type.Array(Type.Union([displayNumber, Type.Null()])),
+      gpuMs: Type.Array(Type.Union([displayNumber, Type.Null()])),
+      frameIndices: Type.Array(Type.Integer({ minimum: 0 }), { maxItems: 1536, uniqueItems: true }),
+      watchdogSeconds: Type.Array(displayNumber),
+      watchdogIndices: Type.Array(Type.Integer({ minimum: 1 }), { maxItems: 512, uniqueItems: true }),
+      watchdogPeriodMs: Type.Literal(16),
+      phases: Type.Array(
+        object({
+          phase: PhaseMarkSchema.properties.phase,
+          start: displayNumber,
+          end: optionalNumber,
+          durationMs: optionalNumber,
+        }),
+        { maxItems: 128 },
+      ),
+      blocks: Type.Array(
+        object({
+          start: displayNumber,
+          end: displayNumber,
+          durationMs: displayNumber,
+          sources: Type.Array(Type.String(), { maxItems: 3 }),
+        }),
+        { maxItems: 256 },
+      ),
+      discrepancies: Type.Array(object({ name: Type.String(), ms: displayNumber, flagged: Type.Boolean() }), {
+        maxItems: 256,
+      }),
+    }),
+    histogram: object({
+      bins: Type.Array(object({ start: displayNumber, end: displayNumber, count: Type.Integer({ minimum: 0 }) }), {
+        maxItems: 40,
+      }),
+      count: Type.Integer({ minimum: 0 }),
+      maxCount: Type.Integer({ minimum: 0 }),
+    }),
+    attribution: Type.Array(
+      object({
+        start: displayNumber,
+        end: displayNumber,
+        durationMs: displayNumber,
+        sourceURL: Type.Optional(Type.String()),
+        invoker: Type.Optional(Type.String()),
+        invokerType: Type.Optional(Type.String()),
+        sourceFunctionName: Type.Optional(Type.String()),
+        sourceCharPosition: optionalNumber,
+      }),
+      { maxItems: 256 },
+    ),
   },
   {
     additionalProperties: false,
-    $id: 'https://bhouston.github.io/performance-kit/schema/v1/manifest.schema.json',
+    $id: 'https://bhouston.github.io/performance-kit/schema/v1/processed-result.schema.json',
   },
 );
-export type Manifest = Static<typeof ManifestSchema>;
-export type RunSetManifest = Manifest;
+export type ProcessedResult = Static<typeof ProcessedResultSchema>;
 export type Envelope<TType extends string, TPayload> = {
   protocol: 'performance-kit';
   protocolVersion: 1;
@@ -274,7 +357,36 @@ export type MessageToHarness = Static<typeof MessageToHarnessSchema>;
 const ajv = new Ajv({ allErrors: true, strict: false });
 export const validateSuite = ajv.compile<Suite>(SuiteSchema);
 export const validateRunResult = ajv.compile<RunResult>(RunResultSchema);
-export const validateManifest = ajv.compile<Manifest>(ManifestSchema);
+const validateProcessedSchema = ajv.compile<ProcessedResult>(ProcessedResultSchema);
+export const validateProcessedResult: ValidateFunction<ProcessedResult> = Object.assign(
+  (value: unknown) => {
+    const valid = validateProcessedSchema(value);
+    validateProcessedResult.errors = validateProcessedSchema.errors;
+    if (!valid) return false;
+    const metrics = value as ProcessedResult;
+    const timeline = metrics.timeline;
+    const error = (instancePath: string, message: string) => {
+      validateProcessedResult.errors = [{ keyword: 'alignment', instancePath, schemaPath: '', params: {}, message }];
+      return false;
+    };
+    if (timeline.frameSeconds.length !== metrics.statistics.frameCount)
+      return error('/timeline/frameSeconds', 'must contain every measured frame');
+    if (
+      timeline.cpuMs.length !== timeline.frameSeconds.length ||
+      timeline.gpuMs.length !== timeline.frameSeconds.length
+    )
+      return error('/timeline', 'CPU and GPU arrays must align with frameSeconds');
+    for (const [name, indices, length] of [
+      ['frameIndices', timeline.frameIndices, timeline.frameSeconds.length],
+      ['watchdogIndices', timeline.watchdogIndices, timeline.watchdogSeconds.length],
+    ] as const) {
+      if (indices.some((index, position) => index >= length || (position > 0 && index <= indices[position - 1]!)))
+        return error(`/timeline/${name}`, 'indices must be ordered and refer to existing samples');
+    }
+    return true;
+  },
+  { errors: null },
+) as ValidateFunction<ProcessedResult>;
 export const validateMessageToReporter = ajv.compile<MessageToReporter>(MessageToReporterSchema);
 const validateHarnessSchema = ajv.compile<MessageToHarness>(MessageToHarnessSchema);
 export const validateMessageToHarness: ValidateFunction<MessageToHarness> = Object.assign(
@@ -315,8 +427,8 @@ export function assertSuite(value: unknown): asserts value is Suite {
 export function assertRunResult(value: unknown): asserts value is RunResult {
   assert(validateRunResult, value, 'Invalid result');
 }
-export function assertManifest(value: unknown): asserts value is Manifest {
-  assert(validateManifest, value, 'Invalid manifest');
+export function assertProcessedResult(value: unknown): asserts value is ProcessedResult {
+  assert(validateProcessedResult, value, 'Invalid processed result');
 }
 export function assertMessageToReporter(value: unknown): asserts value is MessageToReporter {
   assert(validateMessageToReporter, value, 'Invalid protocol message');
@@ -328,7 +440,7 @@ export const schemas = {
   'named-entity': NamedEntitySchema,
   suite: SuiteSchema,
   'run-result': RunResultSchema,
-  manifest: ManifestSchema,
+  'processed-result': ProcessedResultSchema,
   'message-to-reporter': MessageToReporterSchema,
   'message-to-harness': MessageToHarnessSchema,
   ...protocolSchemas,
@@ -336,3 +448,5 @@ export const schemas = {
 
 export * from './derive.js';
 export * from './colorScales.js';
+
+export * from './process.js';
