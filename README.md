@@ -58,7 +58,7 @@ The renderer owns its loop; the reporter bounds measurement with its own clock. 
 
 A suite is a flat list of stable IDs, names, URLs, labels, run duration and optional params. Repetitions default to three, warmup to two seconds, and order to interleaved. `params` pass through verbatim. Use the generated `packages/schema/schemas/suite.schema.json` for editor completion. See [the demo suite](examples/demo-suite.json).
 
-Each invocation creates `runsets/<timestamp>_<id>/manifest.json`, a suite/schedule snapshot, and `runs/<entry-id>/rep-<n>.json` with optional adjacent PNGs. `latest.json` points to the newest run set. Writers append; they never store medians, percentages or durations. Report builds create an `index.json` for loading raw results efficiently and preserve raw JSON links. Static reports work on ordinary HTTP hosting, including a subdirectory. Serve the build over HTTP locally; browsers restrict fetching from `file://` URLs.
+Each invocation creates `runsets/<timestamp>_<id>/manifest.json`, a suite/schedule snapshot, and `runs/<entry-id>/rep-<n>.json` with optional adjacent AVIF captures. Captures use the same settings as ss-fidelity: quality 90, chroma subsampling `4:4:4`, and alpha removed. Browser capture transport remains lossless PNG before the measured window; the runner converts it to AVIF after measurement finishes. `latest.json` points to the newest run set. Writers append; they never store medians, percentages or durations. Report builds create an `index.json` for loading raw results efficiently and preserve raw JSON links. Static reports work on ordinary HTTP hosting, including a subdirectory. Serve the build over HTTP locally; browsers restrict fetching from `file://` URLs.
 
 ## Measurement and statistics
 

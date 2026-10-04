@@ -269,7 +269,7 @@ export async function runSuite(options: RunOptions): Promise<{ runset: string; r
         reporter: payload.reporter,
         status: payload.status,
         ...(payload.error ? { error: payload.error } : {}),
-        ...(capture ? { capture: { file: `rep-${repetition}.png`, at: capture.at } } : {}),
+        ...(capture ? { capture: { file: `rep-${repetition}.avif`, at: capture.at } } : {}),
       } as RunResult;
       await page.close();
       const file = await writeRun(runset, result, capture ? Uint8Array.from(capture.bytes) : undefined);
