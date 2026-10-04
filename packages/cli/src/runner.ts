@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import puppeteer, { type Browser } from 'puppeteer';
 import { ulid } from 'ulid';
 import { assertMessageToHarness, assertManifest } from 'performance-kit-schema';
-import type { RunResult } from 'performance-kit-schema';
+import type { RunResult, Environment } from 'performance-kit-schema';
 import { harnessRun } from './harness.js';
 import { chromeFlags, isSoftwareAdapter, scheduleSuite } from './schedule.js';
 import { loadSuite, safeEntryId, updateLatest, writeRun } from './storage.js';
@@ -221,7 +221,7 @@ export async function runSuite(options: RunOptions): Promise<{ runset: string; r
           messages: [],
           clockSync: { samples: [] },
           environment: {},
-          status: 'error',
+          status: /timeout/i.test((error as Error).message) ? 'timeout' : 'error',
           error: { message: (error as Error).message },
           capture: undefined,
         };
@@ -239,8 +239,14 @@ export async function runSuite(options: RunOptions): Promise<{ runset: string; r
         chromeFlags: flags,
         host,
         gitCommit,
-        ...payload.environment,
+        ...(payload.environment as Partial<Environment>),
       };
+      if (isSoftwareAdapter(environment.gpuAdapter) && !options.allowSoftware) {
+        payload.status = 'error';
+        payload.error = {
+          message: `Renderer selected a software GPU: ${JSON.stringify(environment.gpuAdapter)}. Pass --allow-software only for functional testing.`,
+        };
+      }
       const result = {
         schemaVersion: 1,
         runId,

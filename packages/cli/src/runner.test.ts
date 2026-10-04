@@ -2,6 +2,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+const scenario = vi.hoisted(() => ({
+  environment: {} as Record<string, unknown>,
+  failure: undefined as string | undefined,
+}));
 const launch = vi.hoisted(() =>
   vi.fn(async () => ({
     userAgent: async () => 'pinned-test-chrome',
@@ -12,15 +16,17 @@ const launch = vi.hoisted(() =>
       setViewport: async () => {},
       exposeFunction: async () => {},
       evaluate: async (fn: Function, input?: unknown) => {
-        if (input)
+        if (input) {
+          if (scenario.failure) throw new Error(scenario.failure);
           return {
             harness: { iframeCreated: 1000, startSent: 1000, runSent: 1010, runEndObserved: 1110, teardown: 1111 },
             reporter: { frames: [], runStart: 1010, runEnd: 1110 },
             messages: [],
             clockSync: { samples: [] },
-            environment: {},
+            environment: scenario.environment,
             status: 'ok',
           };
+        }
         if (fn.toString().includes('requestAdapter'))
           return {
             available: true,
@@ -56,6 +62,37 @@ describe('runner lifecycle', () => {
       expect(manifest.environment.userAgent).toBe('pinned-test-chrome');
       expect(manifest.environment.gpuTimestampsAvailable).toBe(true);
     } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it('persists renderer software adapter errors and outer-clock timeouts', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'performance-failure-'));
+    const exitCode = process.exitCode;
+    try {
+      const suite = join(root, 'suite.json');
+      await writeFile(
+        suite,
+        JSON.stringify({
+          schemaVersion: 1,
+          name: 'failures',
+          defaults: { repetitions: 1, captureAfterWarmup: false, warmupMs: 0 },
+          entries: [{ id: 'cube', name: 'Cube', url: 'http://127.0.0.1/cube', durationMs: 100 }],
+        }),
+      );
+      scenario.environment = { gpuAdapter: { description: 'SwiftShader selected by renderer' } };
+      const software = await runSuite({ suite, out: join(root, 'software'), port: 0, cooldownMs: 0 });
+      expect(software.results[0].status).toBe('error');
+      expect(software.results[0].error?.message).toContain('Renderer selected a software GPU');
+      scenario.environment = {};
+      scenario.failure = 'Timeout during renderer page run';
+      const timeout = await runSuite({ suite, out: join(root, 'timeout'), port: 0, cooldownMs: 0 });
+      expect(timeout.results[0].status).toBe('timeout');
+      expect(timeout.results[0].reporter.frames).toEqual([]);
+      expect(JSON.parse(await readFile(join(timeout.runset, 'runs/cube/rep-1.json'), 'utf8')).status).toBe('timeout');
+    } finally {
+      scenario.environment = {};
+      scenario.failure = undefined;
+      process.exitCode = exitCode;
       await rm(root, { recursive: true, force: true });
     }
   });
