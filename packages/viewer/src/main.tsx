@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { humanizeBytes } from 'humanize-units';
+import { Bandwidth } from './Bandwidth.js';
 import { createRoot } from 'react-dom/client';
 import { frameTimeColor, responsivenessColor } from 'performance-kit-schema/colorScales';
 import type { NamedEntity, ProcessedResult } from 'performance-kit-schema';
@@ -21,6 +23,17 @@ import './style.css';
 type Point = [seconds: number, milliseconds: number];
 type ResultReference = { renderer: NamedEntity; scene: NamedEntity; metrics: string; screenshot?: string };
 type RecordItem = ResultReference & { result: ProcessedResult };
+const downloadMinTime = (result: ProcessedResult) =>
+  Math.floor(
+    (result.downloads ?? []).reduce(
+      (earliest, report) =>
+        report.resources.reduce(
+          (min, resource) => Math.min(min, (report.timeOrigin + resource.startTime) / 1000),
+          earliest,
+        ),
+      0,
+    ),
+  );
 const entryTitle = (result: ProcessedResult) => `${result.entry.renderer.name} · ${result.entry.scene.name}`;
 const duration = (seconds: number | undefined) => {
   if (seconds === undefined) return '—';
@@ -32,10 +45,12 @@ const fps = (value: number | undefined) => (value === undefined ? '—' : `${Num
 function Timeline({
   result,
   maxTime,
+  minTime = 0,
   kind = 'intervals',
 }: {
   result: ProcessedResult;
   maxTime: number;
+  minTime?: number;
   kind?: 'intervals' | 'cpu' | 'gpu' | 'responsiveness';
 }) {
   const [hover, setHover] = useState<{ time: number; value: number; x: number; y: number }>();
@@ -96,7 +111,7 @@ function Timeline({
         right = Math.max(left + 1, width - 138),
         top = 34,
         bottom = height - 28;
-      const x = (t: number) => left + (t / timeMax) * (right - left);
+      const x = (t: number) => left + ((t - minTime) / (timeMax - minTime)) * (right - left);
       const y = (v: number) => bottom - (v / scale.max) * (bottom - top);
       const style = getComputedStyle(canvas),
         color = (name: string) => style.getPropertyValue(name).trim();
@@ -125,7 +140,7 @@ function Timeline({
       }
       ctx.textAlign = 'left';
       ctx.fillText('ms', 4, 20);
-      for (let t = 0; t <= timeMax; t++) {
+      for (let t = Math.ceil(minTime); t <= timeMax; t++) {
         ctx.beginPath();
         ctx.moveTo(x(t), top);
         ctx.lineTo(x(t), bottom);
@@ -202,7 +217,7 @@ function Timeline({
       observer.disconnect();
       theme.removeEventListener('change', draw);
     };
-  }, [result, kind, timeMax, hover, average, p95, timeline, scale, plot, responsiveness]);
+  }, [result, kind, timeMax, minTime, hover, average, p95, timeline, scale, plot, responsiveness]);
   return (
     <div className="timeline-container">
       <canvas
@@ -213,7 +228,7 @@ function Timeline({
         onMouseMove={(event) => {
           const rect = event.currentTarget.getBoundingClientRect(),
             px = event.clientX - rect.left;
-          const time = ((px - 44) / (rect.width - 182)) * timeMax;
+          const time = minTime + ((px - 44) / (rect.width - 182)) * (timeMax - minTime);
           if (px < 44 || px > rect.width - 138 || !samples.length) {
             setHover(undefined);
             return;
@@ -274,6 +289,7 @@ function Histogram({ values, responsiveness = false }: { values: number[]; respo
   );
 }
 function Detail({ result }: { result: ProcessedResult }) {
+  const minTime = downloadMinTime(result);
   const [kind, setKind] = useState<'intervals' | 'cpu' | 'gpu'>('intervals');
   const { statistics, timeline } = result;
   const intervals =
@@ -295,9 +311,10 @@ function Detail({ result }: { result: ProcessedResult }) {
           <option value="gpu">GPU cost</option>
         </select>
       </div>
-      <Timeline result={result} maxTime={Math.max(1, timeline.maxTime)} kind={kind} />
+      <Timeline result={result} minTime={minTime} maxTime={Math.max(1, timeline.maxTime)} kind={kind} />
       <h2>Responsiveness · lateness in ms</h2>
-      <Timeline result={result} maxTime={Math.max(1, timeline.maxTime)} kind="responsiveness" />
+      <Timeline result={result} minTime={minTime} maxTime={Math.max(1, timeline.maxTime)} kind="responsiveness" />
+      <Bandwidth result={result} maxTime={Math.max(1, timeline.maxTime)} minTime={minTime} />
       <div className="detail-grid">
         <section>
           <h3>Framerate</h3>
@@ -350,12 +367,14 @@ function Detail({ result }: { result: ProcessedResult }) {
 function Card({
   item,
   maxTime,
+  minTime = 0,
   revision = 0,
   captureEpoch = 0,
   navigate,
 }: {
   item: RecordItem;
   maxTime: number;
+  minTime?: number;
   revision?: number;
   captureEpoch?: number;
   navigate: (id: string) => void;
@@ -418,7 +437,7 @@ function Card({
                     }
                   }}
                 >
-                  {entryTitle(r)}
+                  {entryTitle(r)} <small> · {r.networkProfile?.name ?? 'profile unrecorded'}</small>
                 </a>
                 <button
                   className="bookmark"
@@ -441,18 +460,29 @@ function Card({
             </div>
             <div className="stats">
               {(Object.keys(metricTable) as SortKey[]).map((key) => (
-                <div key={key}>
+                <div
+                  key={key}
+                  title={
+                    key === 'download'
+                      ? `Known wire bytes across load and post-load; ${r.downloads?.reduce((count, report) => count + report.unknownSizeCount, 0) ?? 0} requests with hidden sizes`
+                      : undefined
+                  }
+                >
                   <small>{metricTable[key].label}</small>
-                  <strong style={{ color: gradeColors[gradeMetric(key, metrics[key])] }}>
-                    {key === 'avgFrameRate'
-                      ? fps(metrics[key])
-                      : duration(metrics[key] === undefined ? undefined : metrics[key]! / 1000)}
+                  <strong
+                    style={{ color: key === 'download' ? undefined : gradeColors[gradeMetric(key, metrics[key])] }}
+                  >
+                    {key === 'download'
+                      ? `${r.downloads?.some((report) => report.unknownSizeCount > 0) ? '≥ ' : ''}${humanizeBytes(metrics.download, { emptyValue: '—' })}`
+                      : key === 'avgFrameRate'
+                        ? fps(metrics[key])
+                        : duration(metrics[key] === undefined ? undefined : metrics[key]! / 1000)}
                   </strong>
                 </div>
               ))}
             </div>
           </div>
-          <Timeline result={r} maxTime={maxTime} />
+          <Timeline result={r} maxTime={maxTime} minTime={minTime} />
         </div>
       </div>
       {(r.error || r.status !== 'ok') && <p className="error">{r.error?.message ?? r.status}</p>}
@@ -716,6 +746,7 @@ function App() {
     }
   }, [selected, items, scrollList]);
   const detailItem = items.find((item) => resultId(item.result) === selected);
+  const minTime = cards.reduce((earliest, item) => Math.min(earliest, downloadMinTime(item.result)), 0);
   const maxTime = cards.reduce((longest, item) => Math.max(longest, item.result.timeline.maxTime), 1);
   return (
     <>
@@ -834,6 +865,7 @@ function App() {
             <Card
               key={item.metrics}
               maxTime={maxTime}
+              minTime={minTime}
               navigate={navigate}
               item={item}
               captureEpoch={captureEpoch}

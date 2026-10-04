@@ -11,6 +11,10 @@ const launch = vi.hoisted(() =>
     userAgent: async () => 'pinned-test-chrome',
     close: async () => {},
     newPage: async () => ({
+      createCDPSession: async () => ({ send: async () => {} }),
+      setBypassServiceWorker: async () => {},
+      setCacheEnabled: async () => {},
+      emulateNetworkConditions: async () => {},
       goto: async () => {},
       close: async () => {},
       setViewport: async () => {},

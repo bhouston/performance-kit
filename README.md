@@ -190,3 +190,49 @@ Created by [Ben Houston](https://github.com/bhouston).
 [coverage-url]: https://github.com/bhouston/performance-kit/actions/workflows/ci.yml
 [license-badge]: https://img.shields.io/github/license/bhouston/performance-kit
 [license-url]: LICENSE
+
+## Network measurements
+
+The reporter observes the iframe's Resource Timing timeline as soon as it is
+created, including buffered requests and the document's navigation entry.
+`ready()` sends a `download-report` for completed load requests; the end of the
+measurement sends a separate, incremental `post-load` report. Requests still in
+flight at ready appear in post-load when they complete. Wire and decoded bytes,
+category totals, and individual resources are retained in raw and processed
+results. Cross-origin resources without Timing-Allow-Origin are counted as
+unknown, rather than zero-byte downloads. Worker fetches have separate timelines
+and are not included; inline/blob resources do not consume network bytes.
+Create the reporter early: requests lost before reporter creation cannot be
+recovered from a full browser resource buffer.
+
+Select a profile with `defaults.networkProfile` in the suite JSON:
+
+```json
+{
+  "defaults": { "networkProfile": "slow-4g" },
+  "networkProfiles": [
+    { "name": "unthrottled", "latencyMs": 0, "downloadBytesPerSec": -1, "uploadBytesPerSec": -1 },
+    { "name": "slow-4g", "latencyMs": 150, "downloadBytesPerSec": 200000, "uploadBytesPerSec": 93750 }
+  ]
+}
+```
+
+If `networkProfiles` is omitted, built-in `unthrottled`, `fast-4g`, `slow-4g`,
+and `3g` profiles are available. The default is `unthrottled`. Custom lists must
+include the selected name (or `unthrottled` when no name is selected). Each run
+disables HTTP cache and bypasses service workers. CDP conditions are applied
+before navigation and to new request sessions, including out-of-process iframes,
+through Puppeteer’s CDP network manager before those targets resume. Conditions use uniform per-request latency and
+an approximate bandwidth cap. Profiles are stored in results, shown on cards,
+and comparison refuses groups with different conditions or unrecorded profiles.
+Run profiles into separate output directories; a profile matrix is not yet supported.
+
+The fifth card metric, Download, shows total known transferred bytes across load
+and post-load, formatted by `humanize-units`; cards can sort by Download.
+Expand a result to see its SVG bandwidth chart and request waterfall. Dotted
+lead-ins indicate waiting; colored bands estimate uniform byte arrival in
+10 ms bins (adaptively wider for long runs). Integrating the bands preserves
+known transfer bytes, including instantaneous responses assigned to one bin.
+Startup requests before the start signal use negative times on the shared
+frame/network time axis. Hidden sizes are listed separately. The CDN proxy is
+outside this release's scope.

@@ -1,6 +1,6 @@
 import type { ProcessedResult, PhaseColorConfig } from 'performance-kit-schema';
 
-export type SortKey = 'setupTime' | 'avgFrameRate' | 'maxJitter' | 'worstResponsiveness';
+export type SortKey = 'setupTime' | 'avgFrameRate' | 'maxJitter' | 'worstResponsiveness' | 'download';
 export type SortDirection = 'bestFirst' | 'worstFirst';
 export type MetricGrade = 'good' | 'warn' | 'bad' | 'none';
 export const gradeColors: Record<MetricGrade, string> = {
@@ -9,14 +9,16 @@ export const gradeColors: Record<MetricGrade, string> = {
   bad: 'rgb(239,68,68)',
   none: 'var(--muted-foreground)',
 };
-// Values are milliseconds except FPS. A higher FPS is better; other metrics are lower-is-better.
+// Values are milliseconds except FPS and download bytes. A higher FPS is better; other metrics are lower-is-better.
 export const metricTable = {
   setupTime: { label: 'Setup time', sign: 1, good: 250, warn: 500 },
   avgFrameRate: { label: 'Average frame rate', sign: -1, good: -60, warn: -30 },
   maxJitter: { label: 'Max jitter', sign: 1, good: 5, warn: 15 },
   worstResponsiveness: { label: 'Worst responsiveness', sign: 1, good: 50, warn: 300 },
+  download: { label: 'Download', sign: 1, good: Infinity, warn: Infinity },
 } as const;
 export function gradeMetric(key: SortKey, value: number | undefined): MetricGrade {
+  if (key === 'download') return 'none';
   if (value === undefined || !Number.isFinite(value)) return 'none';
   const rule = metricTable[key],
     score = value * rule.sign;
@@ -41,6 +43,7 @@ export function cardMetrics(result: ProcessedResult): Record<SortKey, number | u
     avgFrameRate: s.averageFps ?? (mean ? 1 / mean : undefined),
     maxJitter: ms(jitter),
     worstResponsiveness: ms(worst),
+    download: result.downloads?.reduce((total, report) => total + report.totalTransferBytes, 0),
   };
 }
 export function compareMetrics(a: ProcessedResult, b: ProcessedResult, key: SortKey, direction: SortDirection): number {

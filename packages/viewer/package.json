@@ -8,6 +8,7 @@
     "tsc": "tsc --noEmit"
   },
   "dependencies": {
+    "humanize-units": "^2.0.4",
     "performance-kit-schema": "workspace:*",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

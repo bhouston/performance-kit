@@ -32,6 +32,7 @@ it('uses means rather than medians, max absolute jitter and worst delay', () => 
     avgFrameRate: 50,
     maxJitter: 10,
     worstResponsiveness: 64,
+    download: undefined,
   });
   const empty = processRun({ ...run, reporter: { frames: [] } });
   expect(cardMetrics(empty)).toEqual({
@@ -39,6 +40,7 @@ it('uses means rather than medians, max absolute jitter and worst delay', () => 
     avgFrameRate: undefined,
     maxJitter: undefined,
     worstResponsiveness: undefined,
+    download: undefined,
   });
 });
 it('sorts each metric in both directions and leaves missing observations last', () => {
@@ -49,7 +51,7 @@ it('sorts each metric in both directions and leaves missing observations last', 
   b.statistics.averageFps = 25;
   b.statistics.maxJitterSeconds = 0.02;
   b.statistics.worstResponsivenessSeconds = 0.2;
-  for (const key of Object.keys(metricTable) as (keyof typeof metricTable)[]) {
+  for (const key of Object.keys(metricTable).filter((key) => key !== 'download') as (keyof typeof metricTable)[]) {
     expect(compareMetrics(a, b, key, 'bestFirst')).toBeLessThan(0);
     expect(compareMetrics(a, b, key, 'worstFirst')).toBeGreaterThan(0);
     expect(compareMetrics(a, empty, key, 'worstFirst')).toBeLessThan(0);
@@ -89,4 +91,26 @@ it('roundtrips shareable sort, detail and filter URLs and defaults invalid optio
   b.entry.scene.id = 'c';
   a.entry.scene.id = 'b-c';
   expect(resultId(a)).not.toBe(resultId(b));
+});
+it('sorts Download in both directions by total transferred bytes and retains missing values last', () => {
+  const a = processRun(run),
+    b = processRun(run),
+    missing = processRun(run);
+  const report = {
+    phase: 'load' as const,
+    timeOrigin: 0,
+    totalTransferBytes: 100,
+    totalDecodedBytes: 200,
+    unknownSizeCount: 0,
+    byCategory: { script: 100, wasm: 0, model: 0, texture: 0, document: 0, other: 0 },
+    resources: [],
+  };
+  a.downloads = [report, { ...report, phase: 'post-load', totalTransferBytes: 50 }];
+  b.downloads = [{ ...report, totalTransferBytes: 200 }];
+  expect(cardMetrics(a).download).toBe(150);
+  expect(compareMetrics(a, b, 'download', 'bestFirst')).toBeLessThan(0);
+  expect(compareMetrics(a, b, 'download', 'worstFirst')).toBeGreaterThan(0);
+  expect(compareMetrics(missing, a, 'download', 'bestFirst')).toBeGreaterThan(0);
+  expect(compareMetrics(missing, a, 'download', 'worstFirst')).toBeGreaterThan(0);
+  expect(readRoute(new URL('https://test/?sort=download')).sort).toBe('download');
 });

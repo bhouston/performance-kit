@@ -317,6 +317,40 @@ describe('extrema-preserving sampling', () => {
     for (const limit of [0, 3, 1001, NaN, 4.5]) expect(() => downsampleExtrema(points, limit)).toThrow('Point limit');
   });
 });
+it('preserves network reports and aligns frame-relative downloads including pre-reporter startup', () => {
+  const run = raw(5);
+  run.networkProfile = { name: 'slow-4g', latencyMs: 150, downloadBytesPerSec: 200000, uploadBytesPerSec: 93750 };
+  run.reporter.startReceived = 1000;
+  run.reporter.downloads = [
+    {
+      phase: 'load',
+      timeOrigin: 900,
+      totalTransferBytes: 20,
+      totalDecodedBytes: 40,
+      unknownSizeCount: 0,
+      byCategory: { script: 20, wasm: 0, model: 0, texture: 0, document: 0, other: 0 },
+      resources: [
+        {
+          url: '/a.js',
+          category: 'script',
+          initiatorType: 'script',
+          startTime: 10,
+          responseStart: 20,
+          responseEnd: 30,
+          transferSize: 20,
+          encodedBodySize: 20,
+          decodedBodySize: 40,
+          sizeKnown: true,
+        },
+      ],
+    },
+  ];
+  const result = processRun(run);
+  assertProcessedResult(result);
+  expect(result.downloads?.[0]?.timeOrigin).toBe(-100);
+  expect(result.networkProfile).toEqual(run.networkProfile);
+  expect(run.reporter.downloads[0]!.timeOrigin).toBe(900);
+});
 
 it('keeps arbitrary duplicate phases, explicit render start and complete-data headline metrics', () => {
   const input = raw(3);

@@ -109,6 +109,10 @@ export async function harnessRun(input: {
         sentAt: { clock: 'reporter', t: message.sentAt },
         receivedAt: { clock: 'harness', t: receivedAt },
       });
+      if (message.type === 'download-report') {
+        reporter.downloads ??= [] as unknown[];
+        (reporter.downloads as unknown[]).push(message.payload);
+      }
       if (message.type === 'hello') reporter.hello = message.sentAt;
       if (message.type === 'phase') {
         const phases = reporter.phases as { id?: number; phase: string; start: { t: number } }[];

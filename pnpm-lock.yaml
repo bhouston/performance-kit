@@ -96,6 +96,9 @@ importers:
 
   packages/viewer:
     dependencies:
+      humanize-units:
+        specifier: ^2.0.4
+        version: 2.0.4
       performance-kit-schema:
         specifier: workspace:*
         version: link:../schema
@@ -1482,6 +1485,10 @@ packages:
   human-id@4.2.1:
     resolution: {integrity: sha512-zPGsiS+dWoTZtZ4AtpA9Y+BdSFSNWvnouNlWNoUFyAM6xHOHmdCvqO3k8AIbdamCOv4gUFUVNPf6rJFfc4UiJw==}
     hasBin: true
+
+  humanize-units@2.0.4:
+    resolution: {integrity: sha512-QLc2sc/IC8HSrum31dyoGlsnaZpyIWlqCb7KVutIkoHeR2IFQTVUlouA6YJ7C5qD/gKMtAp99yhg8eFXtYPROA==}
+    engines: {node: '>=18'}
 
   husky@9.1.7:
     resolution: {integrity: sha512-5gs5ytaNjBrh5Ow3zrvdUUY+0VxIuWVL4i9irt6friV+BqdCfmV11CQTWMiBYWHbXhco+J1kHfTOUkePhCDvMA==}
@@ -3534,6 +3541,8 @@ snapshots:
       - supports-color
 
   human-id@4.2.1: {}
+
+  humanize-units@2.0.4: {}
 
   husky@9.1.7: {}
 

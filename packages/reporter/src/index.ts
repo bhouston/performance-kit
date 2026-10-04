@@ -7,6 +7,7 @@ import type {
   PhaseMark,
   PhaseName,
 } from 'performance-kit-schema';
+import { observeDownloads } from './downloads.js';
 import { attachWebGPU, attachWebGL } from './gpu.js';
 import { attachThree } from './three.js';
 import type { GpuTiming } from './gpu.js';
@@ -60,6 +61,8 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
   const origin = options.harnessOrigin ?? query.get('performanceKitOrigin') ?? '';
   const bridge = browser && typeof window.__performanceKitSend === 'function';
   const enabled = browser && (options.enabled ?? Boolean(runId && (bridge || (window.parent !== window && origin))));
+  const downloads = enabled ? observeDownloads() : undefined;
+  let loaded = false;
   let disposed = false;
   let startCallback: ((payload: StartPayload) => void | Promise<void>) | undefined;
   let captureCallback: Parameters<Reporter['onCapture']>[0] | undefined;
@@ -115,6 +118,7 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
     state = 'ended';
     const runEnd = now();
     if (overflow) error(new Error('Frame storage capacity exceeded; increase frameCapacity'));
+    if (loaded) send('download-report', downloads!.snapshot('post-load'));
     send('runEnd', {
       ...(startReceived === undefined ? {} : { startReceived }),
       ...(runStart ? { runStart, renderStart: runStart } : {}),
@@ -327,6 +331,8 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
         error('ready requires setup state');
         return;
       }
+      loaded = true;
+      send('download-report', downloads!.snapshot('load'));
       state = 'ready';
       runStart = now();
       send('ready', { at: runStart, renderStart: runStart });
@@ -391,6 +397,7 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
       clearTimeout(runTimer);
       clearTimeout(watchdog);
       observer?.disconnect();
+      downloads?.dispose();
       if (browser) {
         window.removeEventListener('message', listener);
         if (window.__performanceKitReceive === bridgeReceiver) delete window.__performanceKitReceive;
