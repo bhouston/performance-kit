@@ -4,6 +4,7 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startServer } from './server.js';
+import { Server } from 'node:http';
 it('serves isolation headers, index and live reader assets', async () => {
   const root = await mkdtemp(join(tmpdir(), 'performance-server-'));
   const results = await mkdtemp(join(tmpdir(), 'performance-data-'));
@@ -186,6 +187,73 @@ it('benchmark live events remain available without enabling filesystem watching'
   } finally {
     await stream.close();
     await server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it('dev retries occupied ports and reports the actual bound URL', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'performance-port-'));
+  const occupied = await startServer({ out: root, viewer: root, host: '127.0.0.1', port: 0 });
+  let dev: Awaited<ReturnType<typeof startServer>> | undefined;
+  try {
+    const port = Number(new URL(occupied.url).port);
+    dev = await startServer({
+      out: root,
+      viewer: root,
+      host: '127.0.0.1',
+      port,
+      watchResults: true,
+      findAvailablePort: true,
+    });
+    expect(Number(new URL(dev.url).port)).toBeGreaterThan(port);
+    expect((await fetch(`${dev.url}/index.json`)).status).toBe(200);
+    expect(dev.server.listenerCount('error')).toBe(0);
+    expect(dev.server.listenerCount('listening')).toBe(occupied.server.listenerCount('listening'));
+  } finally {
+    await dev?.close();
+    await occupied.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it('serve fails on an occupied configured port', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'performance-port-'));
+  const occupied = await startServer({ out: root, viewer: root, host: '127.0.0.1', port: 0 });
+  try {
+    await expect(
+      startServer({ out: root, viewer: root, host: '127.0.0.1', port: Number(new URL(occupied.url).port) }),
+    ).rejects.toMatchObject({ code: 'EADDRINUSE' });
+    expect((await fetch(`${occupied.url}/index.json`)).status).toBe(200);
+  } finally {
+    await occupied.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it.each([
+  { code: 'EACCES', port: 4400 },
+  { code: 'EADDRINUSE', port: 65535 },
+])('dev stops on $code at port $port and closes its watcher', async ({ code, port }) => {
+  const root = await mkdtemp(join(tmpdir(), 'performance-port-'));
+  const error = Object.assign(new Error('Listen failed'), { code });
+  const listen = vi.spyOn(Server.prototype, 'listen').mockImplementation(function (this: Server) {
+    queueMicrotask(() => this.emit('error', error));
+    return this;
+  });
+  const { watch } = await import('node:fs');
+  const probe = watch(root);
+  const prototype = Object.getPrototypeOf(probe);
+  probe.close();
+  const close = vi.spyOn(prototype, 'close');
+  try {
+    await expect(
+      startServer({ out: root, viewer: root, port, watchResults: true, findAvailablePort: true }),
+    ).rejects.toBe(error);
+    expect(listen).toHaveBeenCalledTimes(1);
+    expect(close).toHaveBeenCalledTimes(1);
+  } finally {
+    listen.mockRestore();
+    close.mockRestore();
     await rm(root, { recursive: true, force: true });
   }
 });

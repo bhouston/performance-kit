@@ -19,6 +19,7 @@ export async function startServer(options: {
   out: string;
   host?: string;
   port?: number;
+  findAvailablePort?: boolean;
   rendererRoot?: string;
   viewer?: string;
   watchResults?: boolean;
@@ -236,10 +237,35 @@ export async function startServer(options: {
     }
   });
   try {
-    await new Promise<void>((accept, reject) => {
-      server.once('error', reject);
-      server.listen(options.port ?? 4400, options.host ?? 'localhost', accept);
-    });
+    let port = options.port ?? 4400;
+    while (true) {
+      try {
+        await new Promise<void>((accept, reject) => {
+          const onError = (error: Error) => {
+            server.removeListener('listening', onListening);
+            reject(error);
+          };
+          const onListening = () => {
+            server.removeListener('error', onError);
+            accept();
+          };
+          server.once('error', onError);
+          server.once('listening', onListening);
+          try {
+            server.listen(port, options.host ?? 'localhost');
+          } catch (error) {
+            server.removeListener('error', onError);
+            server.removeListener('listening', onListening);
+            reject(error);
+          }
+        });
+        break;
+      } catch (error) {
+        if (!options.findAvailablePort || (error as NodeJS.ErrnoException).code !== 'EADDRINUSE' || port >= 65535)
+          throw error;
+        port += 1;
+      }
+    }
   } catch (error) {
     stopWatching();
     throw error;
