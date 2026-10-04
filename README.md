@@ -21,7 +21,7 @@ pnpm cli run --suite examples/demo-suite.json --renderer-root examples --out res
 pnpm cli dev --out results
 ```
 
-Open the URL printed by `dev` (usually <http://localhost:4400>). The [demo suite](examples/demo-suite.json) renders a WebGL cube and a variant with deliberate setup and frame stalls. The viewer shows captures, setup phases, frame timelines, and detailed timing measurements. Search entries, filter renderer configurations or scenes, and sort by frame time, tail latency, jitter, or setup time.
+Open the URL printed by `dev` (usually <http://localhost:4400>). The [demo suite](examples/demo-suite.json) renders a WebGL cube and a variant with deliberate setup and frame stalls. The viewer shows captures, setup phases, frame timelines, and detailed timing measurements. Search entries, filter renderer configurations or scenes, and sort by FPS, tail latency, jitter, or setup time.
 
 The runner rejects software GPUs by default. Use `--allow-software` for functional checks only; those results do not establish hardware GPU performance. Add `--headful` to run visible Chrome or `--executable-path <path>` to choose an installed Chrome.
 
@@ -150,9 +150,13 @@ GPU helpers and the Three adapter are available in the reporter's `gpu` and `thr
 
 CPU timestamps are high-resolution epoch milliseconds tagged by domain. GPU values are decimal nanoseconds on a separate clock. Clock offset uses the minimum-round-trip sync sample; timestamps from different clocks are corrected before comparison.
 
+Cards summarize median FPS, tail latency, jitter, and setup time. FPS is the reciprocal of the median frame interval. Durations use readable units: short costs appear in milliseconds, while longer setup and phase durations appear in seconds.
+
 Frame pacing uses consecutive frame-start differences inside the measured window. CPU submit time and GPU cost appear separately. Percentiles use linear interpolation at `(n − 1) p`; jitter is p75 − p25, and MAD is available in run details. Statistics use every measured raw sample before display series are reduced.
 
-The report derives setup latency, phase durations, watchdog lateness, merged blocked intervals, message-delivery latency, and harness/reporter discrepancies from raw timestamps. Frame-time colors transition green at 16.7 ms, yellow at 33.3 ms, and red at 50 ms; responsiveness transitions at 50, 100, and 300 ms. The CLI processes these statistics and bounded timeline data for both static and development reports.
+Timeline axes use elapsed seconds. The ready marker separates setup from the render timeline, which includes warmup frames from ready onward. The measured interval is marked separately; warmup remains visible for context and contributes no frame pacing, CPU, GPU, or FPS statistics. Processed files store one numeric `frameSeconds` array with aligned `cpuMs` and `gpuMs` arrays and selected display indices, rather than duplicating object timestamps across series. Phase and block offsets use seconds; exact statistics and duration fields retain milliseconds.
+
+The report derives setup latency, phase durations, watchdog lateness, merged blocked intervals, message-delivery latency, and harness/reporter discrepancies from raw timestamps. Frame-time colors transition green at 16.7 ms, yellow at 33.3 ms, and red at 50 ms; responsiveness transitions at 50, 100, and 300 ms. The CLI processes these statistics and bounded timeline data for both static and development reports. Run `pnpm cli process --out results` after upgrading the toolkit to regenerate existing metrics with the current display format; raw measurements remain unchanged.
 
 CLI A/B comparisons match scenes when comparing renderer IDs, renderer configurations when comparing scene IDs, and stable entry IDs when comparing directories. They pool frames for Mann–Whitney U and bootstrap whole runs for the median-ratio confidence interval, preserving within-run correlation. Mixed vsync modes are rejected. Small or single-run samples retain their uncertainty rather than establishing a speedup.
 

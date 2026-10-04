@@ -8,8 +8,13 @@ type Point = [seconds: number, milliseconds: number];
 type ResultReference = { renderer: NamedEntity; scene: NamedEntity; metrics: string; screenshot?: string };
 type RecordItem = ResultReference & { result: ProcessedResult };
 const entryTitle = (result: ProcessedResult) => `${result.entry.renderer.name} · ${result.entry.scene.name}`;
-const number = (n: number | undefined, unit = 'ms') =>
-  n === undefined ? '—' : `${n.toFixed(unit === 's' ? 2 : 1)}${unit}`;
+const duration = (seconds: number | undefined) => {
+  if (seconds === undefined) return '—';
+  const milliseconds = Math.abs(seconds) < 1;
+  const value = milliseconds ? seconds * 1000 : seconds;
+  return `${Number(value.toPrecision(3))}${milliseconds ? 'ms' : 's'}`;
+};
+const fps = (value: number | undefined) => (value === undefined ? '—' : `${Number(value.toPrecision(3))}fps`);
 function Timeline({ result, kind = 'intervals' }: { result: ProcessedResult; kind?: 'intervals' | 'cpu' | 'gpu' }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -31,11 +36,17 @@ function Timeline({ result, kind = 'intervals' }: { result: ProcessedResult; kin
         const value =
           kind === 'intervals'
             ? timeline.frameSeconds[i + 1] === undefined
-              ? undefined
+              ? i === 0
+                ? undefined
+                : (time - timeline.frameSeconds[i - 1]!) * 1000
               : (timeline.frameSeconds[i + 1]! - time) * 1000
             : kind === 'cpu'
-              ? timeline.cpuMs[i]
-              : timeline.gpuMs[i];
+              ? timeline.cpuSeconds[i] === null
+                ? null
+                : timeline.cpuSeconds[i]! * 1000
+              : timeline.gpuSeconds[i] === null
+                ? null
+                : timeline.gpuSeconds[i]! * 1000;
         return value === undefined || value === null || (kind === 'intervals' && value <= 0)
           ? []
           : [[time, value] as Point];
@@ -48,28 +59,33 @@ function Timeline({ result, kind = 'intervals' }: { result: ProcessedResult; kin
                 timeline.watchdogSeconds[i]!,
                 Math.max(
                   0,
-                  (timeline.watchdogSeconds[i]! - timeline.watchdogSeconds[i - 1]!) * 1000 - timeline.watchdogPeriodMs,
+                  (timeline.watchdogSeconds[i]! - timeline.watchdogSeconds[i - 1]! - timeline.watchdogPeriodSeconds) *
+                    1000,
                 ),
               ] as Point,
             ],
       );
-      const ceiling = points.reduce((maximum, p) => Math.max(maximum, p[1]), 50);
+      const ceiling = Math.max(100, (statistics.p99 ?? statistics.p95 ?? 0) * 1200);
+      const clipped = points.some((point) => point[1] > ceiling);
       const x = (t: number) => 36 + (t / maxTime) * (width - 50),
-        y = (v: number) => height - 28 - (v / ceiling) * (height - 42);
+        y = (v: number) => height - 28 - (Math.min(v, ceiling) / ceiling) * (height - 42);
       const style = getComputedStyle(canvas),
         color = (name: string) => style.getPropertyValue(name).trim();
       ctx.font = '10px system-ui';
       ctx.strokeStyle = color('--chart-grid');
       ctx.fillStyle = color('--muted-foreground');
-      for (const v of [0, 16.7, 33.3, 50]) {
+      let previousTick = Infinity;
+      for (const v of [0, 16.7, 33.3, 50, ceiling]) {
+        if (previousTick - y(v) < 12) continue;
+        previousTick = y(v);
         ctx.beginPath();
         ctx.moveTo(36, y(v));
         ctx.lineTo(width - 14, y(v));
         ctx.stroke();
-        ctx.fillText(`${Math.round(v)}`, 3, y(v) + 3);
+        ctx.fillText(`${v === ceiling && clipped ? '≥' : ''}${Math.round(v)}`, 3, y(v) + 3);
       }
       ctx.fillText('ms', 3, height - 8);
-      ctx.fillText(statistics.offsetMs === undefined ? '0s · reporter-relative' : '0s', 36, height - 8);
+      ctx.fillText(statistics.offsetSeconds === undefined ? '0s · reporter-relative' : '0s', 36, height - 8);
       ctx.fillText(`${maxTime.toFixed(1)}s`, width - 43, height - 8);
       for (const phase of timeline.phases) {
         ctx.fillStyle = color(`--chart-${phase.phase}`);
@@ -93,13 +109,24 @@ function Timeline({ result, kind = 'intervals' }: { result: ProcessedResult; kin
         ctx.fillStyle = color('--chart-ready');
         ctx.fillText('ready', x(timeline.ready) + 4, 34);
       }
+      if (timeline.runStart !== undefined) {
+        ctx.setLineDash([2, 4]);
+        ctx.strokeStyle = color('--chart-reference');
+        ctx.beginPath();
+        ctx.moveTo(x(timeline.runStart), 8);
+        ctx.lineTo(x(timeline.runStart), height - 28);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = color('--muted-foreground');
+        ctx.fillText('measured', x(timeline.runStart) + 4, 46);
+      }
       if (statistics.median !== undefined && kind === 'intervals') {
         const reference: [number, string][] =
-          Math.abs(y(statistics.median) - y(statistics.p95!)) < 12
-            ? [[statistics.median, 'median / p95']]
+          Math.abs(y(statistics.median * 1000) - y(statistics.p95! * 1000)) < 12
+            ? [[statistics.median * 1000, 'median / p95']]
             : [
-                [statistics.median, 'median'],
-                [statistics.p95!, 'p95'],
+                [statistics.median * 1000, 'median'],
+                [statistics.p95! * 1000, 'p95'],
               ];
         for (const [value, label] of reference) {
           ctx.setLineDash([4, 5]);
@@ -163,10 +190,10 @@ function Histogram({ result }: { result: ProcessedResult }) {
         {histogram.bins.map((bin, i) => (
           <div
             key={i}
-            title={`${bin.start.toFixed(1)}–${bin.end.toFixed(1)}ms: ${bin.count} frames`}
+            title={`${duration(bin.start)}–${duration(bin.end)}: ${bin.count} frames`}
             style={{
               height: `${Math.max(2, (bin.count / Math.max(1, histogram.maxCount)) * 100)}%`,
-              background: frameTimeColor(bin.start),
+              background: frameTimeColor(bin.start * 1000),
             }}
           />
         ))}
@@ -174,7 +201,7 @@ function Histogram({ result }: { result: ProcessedResult }) {
       <div className="axis">
         0ms{' '}
         <span>
-          {number(histogram.bins.at(-1)?.end)} · {histogram.count} intervals
+          {duration(histogram.bins.at(-1)?.end)} · {histogram.count} intervals
         </span>
       </div>
     </div>
@@ -199,30 +226,31 @@ function Detail({ result }: { result: ProcessedResult }) {
           <h3>Frame distribution</h3>
           <Histogram result={result} />
           <p>
-            p99 {number(statistics.p99)} · MAD {number(statistics.mad)}
+            p99 {duration(statistics.p99)} · MAD {duration(statistics.mad)}
           </p>
           <p>
-            CPU median {number(statistics.cpuMedian)} · p95 {number(statistics.cpuP95)}
+            CPU median {duration(statistics.cpuMedian)} · p95 {duration(statistics.cpuP95)}
           </p>
           <p>
-            GPU median {number(statistics.gpuMedian)} · p95 {number(statistics.gpuP95)}
+            GPU median {duration(statistics.gpuMedian)} · p95 {duration(statistics.gpuP95)}
           </p>
         </section>
         <section>
           <h3>Clock & startup</h3>
           <p>
-            Clock offset {number(statistics.offsetMs)} · drift {number(statistics.driftMs)} · hidden startup{' '}
-            {number(statistics.hiddenStartupMs)}
+            Clock offset {duration(statistics.offsetSeconds)} · drift {duration(statistics.driftSeconds)} · hidden
+            startup {duration(statistics.hiddenStartupSeconds)}
           </p>
           <p>
-            Unaccounted setup {number(statistics.unaccountedMs)} · blocked {number(statistics.setupBlockedMs)}
+            Unaccounted setup {duration(statistics.unaccountedSeconds)} · blocked{' '}
+            {duration(statistics.setupBlockedSeconds)}
           </p>
           <table>
             <tbody>
               {timeline.discrepancies.map((v, i) => (
                 <tr key={i}>
                   <td>{v.name}</td>
-                  <td className={v.flagged ? 'warning' : ''}>{number(v.ms)}</td>
+                  <td className={v.flagged ? 'warning' : ''}>{duration(v.seconds)}</td>
                 </tr>
               ))}
             </tbody>
@@ -235,7 +263,7 @@ function Detail({ result }: { result: ProcessedResult }) {
               {timeline.phases.map((p, i) => (
                 <tr key={i}>
                   <td>{p.phase}</td>
-                  <td>{number(p.durationMs)}</td>
+                  <td>{duration(p.durationSeconds)}</td>
                 </tr>
               ))}
             </tbody>
@@ -254,7 +282,7 @@ function Detail({ result }: { result: ProcessedResult }) {
                       .map((script, index) => (
                         <div className="script-attribution" key={index}>
                           <strong>{script.sourceFunctionName || script.invoker || 'anonymous script'}</strong> ·{' '}
-                          {number(script.durationMs)}
+                          {duration(script.durationSeconds)}
                           <span>
                             {script.sourceURL || 'source unavailable'}
                             {script.sourceCharPosition === undefined ? '' : ` @${script.sourceCharPosition}`}
@@ -268,7 +296,7 @@ function Detail({ result }: { result: ProcessedResult }) {
                         </div>
                       ))}
                   </td>
-                  <td>{number(b.durationMs)}</td>
+                  <td>{duration(b.durationSeconds)}</td>
                 </tr>
               ))}
             </tbody>
@@ -334,19 +362,19 @@ function Card({
             <div className="stats">
               <div>
                 <small>Typical</small>
-                <strong>{number(d.median)}</strong>
+                <strong>{fps(d.typicalFps)}</strong>
               </div>
-              <div title={`p99 ${number(d.p99)}`}>
+              <div title={`p99 ${duration(d.p99)}`}>
                 <small>Tail · p95</small>
-                <strong>{number(d.p95)}</strong>
+                <strong>{fps(d.tailFps)}</strong>
               </div>
               <div>
                 <small>Jitter · IQR</small>
-                <strong>{number(d.iqr)}</strong>
+                <strong>{duration(d.iqr)}</strong>
               </div>
-              <div title={`Max setup block ${number(d.setupMaxBlockMs)}`}>
+              <div title={`Max setup block ${duration(d.setupMaxBlockSeconds)}`}>
                 <small>Setup</small>
-                <strong>{number(d.setupMs === undefined ? undefined : d.setupMs / 1000, 's')}</strong>
+                <strong>{duration(d.setupSeconds)}</strong>
               </div>
             </div>
           </div>
@@ -532,8 +560,8 @@ function App() {
     .toSorted((a, b) =>
       sort === 'name'
         ? entryTitle(a.result).localeCompare(entryTitle(b.result))
-        : (a.result.statistics[sort as 'median' | 'p95' | 'iqr' | 'setupMs'] ?? Infinity) -
-          (b.result.statistics[sort as 'median' | 'p95' | 'iqr' | 'setupMs'] ?? Infinity),
+        : (a.result.statistics[sort as 'median' | 'p95' | 'iqr' | 'setupSeconds'] ?? Infinity) -
+          (b.result.statistics[sort as 'median' | 'p95' | 'iqr' | 'setupSeconds'] ?? Infinity),
     );
   return (
     <>
@@ -552,10 +580,10 @@ function App() {
             />
             <select aria-label="Sort cards" title="Sort" value={sort} onChange={(e) => setSort(e.target.value)}>
               <option value="name">Name</option>
-              <option value="median">Typical frame time</option>
-              <option value="p95">Tail frame time</option>
+              <option value="median">Typical FPS</option>
+              <option value="p95">Tail FPS</option>
               <option value="iqr">Jitter</option>
-              <option value="setupMs">Setup time</option>
+              <option value="setupSeconds">Setup time</option>
             </select>
             <select
               aria-label="Renderers"

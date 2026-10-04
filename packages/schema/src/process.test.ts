@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { deriveRun } from './derive.js';
 import { downsampleExtrema, processRun } from './process.js';
 import { assertProcessedResult, validateProcessedResult, type RunResult } from './index.js';
+const keys = (value: unknown): string[] =>
+  value && typeof value === 'object' ? Object.entries(value).flatMap(([key, item]) => [key, ...keys(item)]) : [];
+
 function raw(count = 5000): RunResult {
   let time = 1010;
   const frames = Array.from({ length: count }, (_, index) => {
@@ -41,26 +44,27 @@ describe('offline raw preprocessing', () => {
     const derived = deriveRun(input);
     const metrics = processRun(input);
     expect(input).toEqual(original);
-    for (const key of [
-      'median',
-      'p95',
-      'p99',
-      'iqr',
-      'mad',
-      'fps',
-      'setupMs',
-      'setupMaxBlockMs',
-      'setupBlockedMs',
+    for (const [output, source] of [
+      ['median', 'median'],
+      ['p95', 'p95'],
+      ['p99', 'p99'],
+      ['iqr', 'iqr'],
+      ['mad', 'mad'],
+      ['setupSeconds', 'setupMs'],
+      ['setupMaxBlockSeconds', 'setupMaxBlockMs'],
+      ['setupBlockedSeconds', 'setupBlockedMs'],
     ] as const)
-      expect(metrics.statistics[key]).toBe(derived[key]);
+      expect(metrics.statistics[output]).toBe(derived[source] === undefined ? undefined : derived[source]! / 1000);
+    expect(metrics.statistics.typicalFps).toBe(derived.fps);
+    expect(metrics.statistics.tailFps).toBe(1000 / derived.p95!);
     expect(metrics.statistics.intervalCount).toBe(4999);
     expect(metrics.statistics.frameCount).toBe(5000);
-    expect(metrics.statistics.phaseDurations).toEqual({ load: 4 });
-    expect(metrics.statistics.cpuMedian).toBe(2);
-    expect(metrics.statistics.gpuMedian).toBe(3);
+    expect(metrics.statistics.phaseDurations).toEqual({ load: 0.004 });
+    expect(metrics.statistics.cpuMedian).toBe(0.002);
+    expect(metrics.statistics.gpuMedian).toBe(0.003);
     expect(metrics.timeline.frameSeconds).toHaveLength(5000);
-    expect(metrics.timeline.cpuMs).toHaveLength(5000);
-    expect(metrics.timeline.gpuMs).toHaveLength(5000);
+    expect(metrics.timeline.cpuSeconds).toHaveLength(5000);
+    expect(metrics.timeline.gpuSeconds).toHaveLength(5000);
     expect(metrics.timeline.frameIndices.length).toBeLessThanOrEqual(1536);
     expect(metrics.timeline.watchdogIndices.length).toBeLessThanOrEqual(512);
     expect(
@@ -72,12 +76,57 @@ describe('offline raw preprocessing', () => {
         ),
       ),
     ).toBeCloseTo(200);
-    expect(Math.max(...metrics.timeline.cpuMs.filter((value): value is number => value !== null))).toBe(35);
+    expect(Math.max(...metrics.timeline.cpuSeconds.filter((value): value is number => value !== null))).toBe(0.035);
     expect(metrics.histogram.count).toBe(4999);
     expect(metrics.histogram.bins.reduce((count, bin) => count + bin.count, 0)).toBe(4999);
     expect(metrics.histogram.bins.length).toBeLessThanOrEqual(40);
     assertProcessedResult(metrics);
     expect(JSON.stringify(metrics).length).toBeLessThan(JSON.stringify(input).length);
+  });
+  it('shows warmup and capture frames after ready while statistics remain measured-window only', () => {
+    const input = raw(6);
+    input.reporter.ready = 1010;
+    input.reporter.runStart = 1030;
+    input.reporter.frames.unshift({ cpuStart: 1000, cpuEnd: 1001 });
+    input.capture = { file: 'screenshot.avif', at: 1023 };
+    const metrics = processRun(input);
+    expect(metrics.timeline.frameSeconds).toHaveLength(6);
+    expect(metrics.timeline.frameSeconds[0]).toBe(0.008);
+    expect(metrics.timeline.ready).toBe(0.005);
+    expect(metrics.timeline.runStart).toBe(0.025);
+    expect(metrics.statistics.frameCount).toBe(4);
+    expect(metrics.statistics.intervalCount).toBe(3);
+    expect(metrics.statistics.median).toBe(0.01);
+    expect(metrics.statistics.typicalFps).toBe(100);
+    expect(metrics.statistics.tailFps).toBe(100);
+    expect(metrics.timeline.frameIndices.at(-1)).toBe(5);
+    expect(validateProcessedResult(metrics)).toBe(true);
+    input.reporter.runEnd = 1053;
+    const clipped = processRun(input);
+    expect(clipped.timeline.frameSeconds).toHaveLength(5);
+    expect(clipped.timeline.frameSeconds.at(-1)).toBe(0.048);
+    expect(clipped.timeline.frameIndices.at(-1)).toBe(4);
+  });
+  it('stores processed configuration, durations, costs, histogram bounds and discrepancies in seconds', () => {
+    const input = raw(3);
+    input.messages = [
+      {
+        type: 'syncPing',
+        direction: 'toReporter',
+        sentAt: { clock: 'harness', t: 1000 },
+        receivedAt: { clock: 'reporter', t: 1025 },
+      },
+    ];
+    const metrics = processRun(input);
+    expect(metrics.config).toEqual({ durationSeconds: 60, warmupSeconds: 0, vsync: 'on' });
+    expect(metrics.timeline.watchdogPeriodSeconds).toBe(0.016);
+    expect(metrics.timeline.cpuSeconds[0]).toBe(0.002);
+    expect(metrics.timeline.gpuSeconds[0]).toBe(0.003);
+    expect(metrics.histogram.bins.at(-1)?.end).toBe(0.01);
+    expect(metrics.timeline.discrepancies[0]).toEqual({ name: 'syncPing', seconds: 0.02, flagged: false });
+    expect(keys(metrics).some((key) => key.endsWith('Ms'))).toBe(false);
+    expect(keys(metrics).includes('value')).toBe(false);
+    expect(keys(metrics).includes('t')).toBe(false);
   });
   it('keeps consecutive timestamps intact so rendering sampled indices never creates artificial frame gaps', () => {
     const input = raw();
@@ -100,10 +149,10 @@ describe('offline raw preprocessing', () => {
     delete input.reporter.frames[1]!.gpuStart;
     delete input.reporter.frames[1]!.gpuEnd;
     const metrics = processRun(input);
-    expect(metrics.timeline.cpuMs).toEqual([2, null, 2]);
-    expect(metrics.timeline.gpuMs).toEqual([3, null, 3]);
+    expect(metrics.timeline.cpuSeconds).toEqual([0.002, null, 0.002]);
+    expect(metrics.timeline.gpuSeconds).toEqual([0.003, null, 0.003]);
     expect(validateProcessedResult(metrics)).toBe(true);
-    expect(validateProcessedResult({ ...metrics, timeline: { ...metrics.timeline, cpuMs: [2, 2] } })).toBe(false);
+    expect(validateProcessedResult({ ...metrics, timeline: { ...metrics.timeline, cpuSeconds: [2, 2] } })).toBe(false);
     expect(validateProcessedResult({ ...metrics, timeline: { ...metrics.timeline, frameIndices: [0, 3] } })).toBe(
       false,
     );
@@ -120,17 +169,22 @@ describe('offline raw preprocessing', () => {
     expect(metrics.screenshot).toBe(false);
     input.capture = { file: 'screenshot.avif', at: 1050 };
     expect(processRun(input).screenshot).toBe(true);
-    expect(metrics.statistics.offsetMs).toBe(5);
+    expect(metrics.statistics.offsetSeconds).toBe(0.005);
     expect(metrics.timeline.runStart).toBe(0.005);
     expect(metrics.timeline.ready).toBe(0);
     expect(metrics.timeline.frameSeconds[0]).toBe((input.reporter.frames[0]!.cpuStart - 1005) / 1000);
-    expect(metrics.timeline.phases[0]).toEqual({ phase: 'load', start: 0, end: 0.004, durationMs: 4 });
+    expect(metrics.timeline.phases[0]).toEqual({ phase: 'load', start: 0, end: 0.004, durationSeconds: 0.004 });
     input.reporter.phases![0] = {
       phase: 'load',
       start: { clock: 'harness', t: 1000 },
       end: { clock: 'harness', t: 1004 },
     };
-    expect(processRun(input).timeline.phases[0]).toEqual({ phase: 'load', start: 0, end: 0.004, durationMs: 4 });
+    expect(processRun(input).timeline.phases[0]).toEqual({
+      phase: 'load',
+      start: 0,
+      end: 0.004,
+      durationSeconds: 0.004,
+    });
   });
   it('uses shared rounded timestamps and seconds while retaining exact statistics and negative phase coordinates', () => {
     const input = raw(3);
@@ -144,15 +198,15 @@ describe('offline raw preprocessing', () => {
     ];
     const metrics = processRun(input);
     expect(metrics.timeline.timeUnit).toBe('seconds');
-    expect(metrics.timeline.valueUnit).toBe('milliseconds');
+    expect(metrics.timeline.valueUnit).toBe('seconds');
     expect(metrics.timeline.frameSeconds.slice(0, 2)).toEqual([0.0101, 0.0268]);
-    expect(metrics.timeline.cpuMs[0]).toBe(2.35);
+    expect(metrics.timeline.cpuSeconds[0]).toBe(0.00235);
     expect((metrics.timeline.frameSeconds[1]! - metrics.timeline.frameSeconds[0]!) * 1000).toBeCloseTo(16.7);
     expect(metrics.timeline.phases[0]?.start).toBe(-0.0002);
     expect(metrics.timeline.phases[0]?.end).toBe(0.0016);
-    expect(metrics.timeline.phases[0]?.durationMs).toBe(1006.5555 - 1004.84321);
-    expect(metrics.statistics.median).toBe(deriveRun(input).median);
-    expect(metrics.statistics.median).not.toBe(16.67);
+    expect(metrics.timeline.phases[0]?.durationSeconds).toBe((1006.5555 - 1004.84321) / 1000);
+    expect(metrics.statistics.median).toBe(deriveRun(input).median! / 1000);
+    expect(metrics.statistics.median).not.toBe(0.01667);
     expect(metrics.histogram.count).toBe(2);
     expect(
       validateProcessedResult({
@@ -167,7 +221,7 @@ describe('offline raw preprocessing', () => {
     const metrics = processRun(input);
     expect(metrics.timeline.watchdogSeconds).toHaveLength(4);
     expect(metrics.timeline.watchdogSeconds.every((point) => point <= metrics.timeline.ready!)).toBe(true);
-    expect(metrics.statistics.setupBlockedMs).toBe(deriveRun(input).setupBlockedMs);
+    expect(metrics.statistics.setupBlockedSeconds).toBe(deriveRun(input).setupBlockedMs / 1000);
     delete input.reporter.ready;
     expect(processRun(input).timeline.watchdogIndices.length).toBeLessThanOrEqual(512);
     expect(processRun(input).timeline.watchdogIndices.length).toBeGreaterThan(3);
@@ -180,15 +234,16 @@ describe('offline raw preprocessing', () => {
     delete input.reporter.phases;
     const metrics = processRun(input);
     expect(metrics.timeline.frameSeconds[0]).toBe(0);
-    expect(metrics.statistics.offsetMs).toBeUndefined();
-    expect(metrics.statistics.setupMs).toBeUndefined();
+    expect(metrics.statistics.offsetSeconds).toBeUndefined();
+    expect(metrics.statistics.setupSeconds).toBeUndefined();
   });
-  it('keeps timeouts with no measured window empty and viewable', () => {
+  it('keeps timeout statistics empty while showing available warmup frames', () => {
     const input = raw();
     input.status = 'timeout';
     delete input.reporter.runStart;
     const metrics = processRun(input);
-    expect(metrics.timeline.frameSeconds).toEqual([]);
+    expect(metrics.timeline.frameSeconds).toHaveLength(5000);
+    expect(metrics.statistics.frameCount).toBe(0);
     expect(metrics.histogram).toEqual({ bins: [], count: 0, maxCount: 0 });
     expect(metrics.statistics.median).toBeUndefined();
     expect(validateProcessedResult(metrics)).toBe(true);
@@ -215,11 +270,11 @@ describe('offline raw preprocessing', () => {
     const metrics = processRun(input);
     expect(metrics.timeline.phases).toHaveLength(128);
     expect(metrics.timeline.blocks).toHaveLength(256);
-    expect(metrics.timeline.blocks[0]?.durationMs).toBe(5);
-    expect(metrics.attribution[0]?.durationMs).toBe(5);
+    expect(metrics.timeline.blocks[0]?.durationSeconds).toBe(0.005);
+    expect(metrics.attribution[0]?.durationSeconds).toBe(0.005);
     expect(metrics.timeline.discrepancies).toHaveLength(256);
     expect(metrics.attribution).toHaveLength(256);
-    expect(metrics.statistics.phaseDurations.load).toBe(1500);
+    expect(metrics.statistics.phaseDurations.load).toBe(1.5);
     expect(validateProcessedResult(metrics)).toBe(true);
   });
   it('rejects raw payload leakage and oversized display series at the schema boundary', () => {

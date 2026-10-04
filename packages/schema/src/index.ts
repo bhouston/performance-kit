@@ -173,7 +173,7 @@ export const ProcessedResultSchema = Type.Object(
     suiteName: Type.Optional(Type.String()),
     screenshot: Type.Boolean(),
     entry: RunResultSchema.properties.entry,
-    config: RunResultSchema.properties.config,
+    config: object({ durationSeconds: positive, warmupSeconds: time, vsync }),
     environment: Type.Optional(EnvironmentSchema),
     status: RunResultSchema.properties.status,
     error: RunResultSchema.properties.error,
@@ -187,15 +187,16 @@ export const ProcessedResultSchema = Type.Object(
       p99: optionalNumber,
       iqr: optionalNumber,
       mad: optionalNumber,
-      fps: optionalNumber,
-      setupMs: optionalNumber,
-      reporterSetupMs: optionalNumber,
-      hiddenStartupMs: optionalNumber,
-      unaccountedMs: optionalNumber,
-      setupMaxBlockMs: displayNumber,
-      setupBlockedMs: displayNumber,
-      offsetMs: optionalNumber,
-      driftMs: optionalNumber,
+      typicalFps: optionalNumber,
+      tailFps: optionalNumber,
+      setupSeconds: optionalNumber,
+      reporterSetupSeconds: optionalNumber,
+      hiddenStartupSeconds: optionalNumber,
+      unaccountedSeconds: optionalNumber,
+      setupMaxBlockSeconds: displayNumber,
+      setupBlockedSeconds: displayNumber,
+      offsetSeconds: optionalNumber,
+      driftSeconds: optionalNumber,
       cpuMedian: optionalNumber,
       cpuP95: optionalNumber,
       gpuMedian: optionalNumber,
@@ -204,24 +205,24 @@ export const ProcessedResultSchema = Type.Object(
     }),
     timeline: object({
       timeUnit: Type.Literal('seconds'),
-      valueUnit: Type.Literal('milliseconds'),
+      valueUnit: Type.Literal('seconds'),
       maxTime: Type.Number({ minimum: 0 }),
       ready: optionalNumber,
       runStart: optionalNumber,
       runEnd: optionalNumber,
       frameSeconds: Type.Array(displayNumber),
-      cpuMs: Type.Array(Type.Union([displayNumber, Type.Null()])),
-      gpuMs: Type.Array(Type.Union([displayNumber, Type.Null()])),
+      cpuSeconds: Type.Array(Type.Union([displayNumber, Type.Null()])),
+      gpuSeconds: Type.Array(Type.Union([displayNumber, Type.Null()])),
       frameIndices: Type.Array(Type.Integer({ minimum: 0 }), { maxItems: 1536, uniqueItems: true }),
       watchdogSeconds: Type.Array(displayNumber),
       watchdogIndices: Type.Array(Type.Integer({ minimum: 1 }), { maxItems: 512, uniqueItems: true }),
-      watchdogPeriodMs: Type.Literal(16),
+      watchdogPeriodSeconds: Type.Literal(0.016),
       phases: Type.Array(
         object({
           phase: PhaseMarkSchema.properties.phase,
           start: displayNumber,
           end: optionalNumber,
-          durationMs: optionalNumber,
+          durationSeconds: optionalNumber,
         }),
         { maxItems: 128 },
       ),
@@ -229,12 +230,12 @@ export const ProcessedResultSchema = Type.Object(
         object({
           start: displayNumber,
           end: displayNumber,
-          durationMs: displayNumber,
+          durationSeconds: displayNumber,
           sources: Type.Array(Type.String(), { maxItems: 3 }),
         }),
         { maxItems: 256 },
       ),
-      discrepancies: Type.Array(object({ name: Type.String(), ms: displayNumber, flagged: Type.Boolean() }), {
+      discrepancies: Type.Array(object({ name: Type.String(), seconds: displayNumber, flagged: Type.Boolean() }), {
         maxItems: 256,
       }),
     }),
@@ -249,7 +250,7 @@ export const ProcessedResultSchema = Type.Object(
       object({
         start: displayNumber,
         end: displayNumber,
-        durationMs: displayNumber,
+        durationSeconds: displayNumber,
         sourceURL: Type.Optional(Type.String()),
         invoker: Type.Optional(Type.String()),
         invokerType: Type.Optional(Type.String()),
@@ -369,11 +370,9 @@ export const validateProcessedResult: ValidateFunction<ProcessedResult> = Object
       validateProcessedResult.errors = [{ keyword: 'alignment', instancePath, schemaPath: '', params: {}, message }];
       return false;
     };
-    if (timeline.frameSeconds.length !== metrics.statistics.frameCount)
-      return error('/timeline/frameSeconds', 'must contain every measured frame');
     if (
-      timeline.cpuMs.length !== timeline.frameSeconds.length ||
-      timeline.gpuMs.length !== timeline.frameSeconds.length
+      timeline.cpuSeconds.length !== timeline.frameSeconds.length ||
+      timeline.gpuSeconds.length !== timeline.frameSeconds.length
     )
       return error('/timeline', 'CPU and GPU arrays must align with frameSeconds');
     for (const [name, indices, length] of [
