@@ -1,0 +1,26 @@
+{
+  "name": "performance-kit-schema",
+  "version": "0.1.0",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "schemas"
+  ],
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./schemas/*": "./schemas/*",
+    "./derive": "./dist/derive.js",
+    "./colorScales": "./dist/colorScales.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "tsc": "tsc -b"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.41",
+    "ajv": "^8.17.1"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "performance-kit-reporter",
+  "version": "0.1.0",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./gpu": "./dist/gpu.js",
+    "./three": "./dist/three.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "tsc": "tsc -b"
+  },
+  "devDependencies": {
+    "performance-kit-schema": "workspace:*"
+  }
+}

@@ -1,0 +1,532 @@
+{
+  "additionalProperties": false,
+  "$id": "https://bhouston.github.io/performance-kit/schema/v1/run-result.schema.json",
+  "type": "object",
+  "required": ["schemaVersion", "runId", "entry", "config", "harness", "reporter", "status"],
+  "properties": {
+    "schemaVersion": {
+      "const": 1,
+      "type": "number"
+    },
+    "runId": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "suiteName": {
+      "type": "string"
+    },
+    "entry": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": ["id", "name", "labels", "url"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": ["key", "value"],
+            "properties": {
+              "key": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "repetition": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "config": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": ["durationMs", "warmupMs", "vsync"],
+      "properties": {
+        "durationMs": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "warmupMs": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "vsync": {
+          "anyOf": [
+            {
+              "const": "on",
+              "type": "string"
+            },
+            {
+              "const": "off",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    "environment": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "userAgent",
+        "gpuTimestampsAvailable",
+        "crossOriginIsolated",
+        "devicePixelRatio",
+        "chromeFlags",
+        "host"
+      ],
+      "properties": {
+        "userAgent": {
+          "type": "string"
+        },
+        "gpuAdapter": {
+          "additionalProperties": false,
+          "type": "object",
+          "properties": {
+            "vendor": {
+              "type": "string"
+            },
+            "architecture": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            }
+          }
+        },
+        "api": {
+          "anyOf": [
+            {
+              "const": "webgpu",
+              "type": "string"
+            },
+            {
+              "const": "webgl2",
+              "type": "string"
+            },
+            {
+              "const": "other",
+              "type": "string"
+            }
+          ]
+        },
+        "gpuTimestampsAvailable": {
+          "type": "boolean"
+        },
+        "crossOriginIsolated": {
+          "type": "boolean"
+        },
+        "devicePixelRatio": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "canvasSize": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": ["width", "height"],
+          "properties": {
+            "width": {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            "height": {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            }
+          }
+        },
+        "chromeFlags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "host": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": ["os", "cpu"],
+          "properties": {
+            "os": {
+              "type": "string"
+            },
+            "cpu": {
+              "type": "string"
+            },
+            "machineId": {
+              "type": "string"
+            }
+          }
+        },
+        "gitCommit": {
+          "type": "string"
+        }
+      }
+    },
+    "harness": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": ["startSent", "teardown"],
+      "properties": {
+        "iframeCreated": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "startSent": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "runSent": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "runEndObserved": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "captureSent": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "teardown": {
+          "minimum": 0,
+          "type": "number"
+        }
+      }
+    },
+    "clockSync": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": ["samples"],
+      "properties": {
+        "samples": {
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": ["t0", "t1", "t2", "t3"],
+            "properties": {
+              "t0": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "t1": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "t2": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "t3": {
+                "minimum": 0,
+                "type": "number"
+              }
+            }
+          }
+        }
+      }
+    },
+    "messages": {
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "direction", "sentAt", "receivedAt"],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "const": "toReporter",
+                "type": "string"
+              },
+              {
+                "const": "toHarness",
+                "type": "string"
+              }
+            ]
+          },
+          "sentAt": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": ["clock", "t"],
+            "properties": {
+              "clock": {
+                "anyOf": [
+                  {
+                    "const": "harness",
+                    "type": "string"
+                  },
+                  {
+                    "const": "reporter",
+                    "type": "string"
+                  }
+                ]
+              },
+              "t": {
+                "minimum": 0,
+                "type": "number"
+              }
+            }
+          },
+          "receivedAt": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": ["clock", "t"],
+            "properties": {
+              "clock": {
+                "anyOf": [
+                  {
+                    "const": "harness",
+                    "type": "string"
+                  },
+                  {
+                    "const": "reporter",
+                    "type": "string"
+                  }
+                ]
+              },
+              "t": {
+                "minimum": 0,
+                "type": "number"
+              }
+            }
+          }
+        }
+      }
+    },
+    "reporter": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": ["frames"],
+      "properties": {
+        "hello": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "phases": {
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": ["phase", "start"],
+            "properties": {
+              "phase": {
+                "anyOf": [
+                  {
+                    "const": "load",
+                    "type": "string"
+                  },
+                  {
+                    "const": "process",
+                    "type": "string"
+                  },
+                  {
+                    "const": "compile",
+                    "type": "string"
+                  }
+                ]
+              },
+              "start": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": ["clock", "t"],
+                "properties": {
+                  "clock": {
+                    "anyOf": [
+                      {
+                        "const": "harness",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reporter",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "t": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                }
+              },
+              "end": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": ["clock", "t"],
+                "properties": {
+                  "clock": {
+                    "anyOf": [
+                      {
+                        "const": "harness",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reporter",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "t": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "ready": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "warmupStart": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "runStart": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "runEnd": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "frames": {
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": ["cpuStart", "cpuEnd"],
+            "properties": {
+              "cpuStart": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "cpuEnd": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "presented": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "gpuStart": {
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              },
+              "gpuEnd": {
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              },
+              "animationTime": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": ["start", "end", "source"],
+            "properties": {
+              "start": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "end": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "source": {
+                "anyOf": [
+                  {
+                    "const": "longtask",
+                    "type": "string"
+                  },
+                  {
+                    "const": "loaf",
+                    "type": "string"
+                  },
+                  {
+                    "const": "watchdog",
+                    "type": "string"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "watchdogTicks": {
+          "type": "array",
+          "items": {
+            "minimum": 0,
+            "type": "number"
+          }
+        }
+      }
+    },
+    "capture": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": ["file", "at"],
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "at": {
+          "minimum": 0,
+          "type": "number"
+        }
+      }
+    },
+    "status": {
+      "anyOf": [
+        {
+          "const": "ok",
+          "type": "string"
+        },
+        {
+          "const": "timeout",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "type": "string"
+        }
+      ]
+    },
+    "error": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": ["message"],
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

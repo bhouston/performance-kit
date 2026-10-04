@@ -1,0 +1,116 @@
+{
+  "additionalProperties": false,
+  "$id": "https://bhouston.github.io/performance-kit/schema/v1/suite.schema.json",
+  "type": "object",
+  "required": ["schemaVersion", "name", "entries"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": 1,
+      "type": "number"
+    },
+    "name": {
+      "type": "string"
+    },
+    "defaults": {
+      "additionalProperties": false,
+      "type": "object",
+      "properties": {
+        "warmupMs": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "repetitions": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "order": {
+          "anyOf": [
+            {
+              "const": "interleaved",
+              "type": "string"
+            },
+            {
+              "const": "sequential",
+              "type": "string"
+            }
+          ]
+        },
+        "setupTimeoutMs": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "captureAfterWarmup": {
+          "type": "boolean"
+        },
+        "vsync": {
+          "anyOf": [
+            {
+              "const": "on",
+              "type": "string"
+            },
+            {
+              "const": "off",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    "entries": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["id", "name", "url", "durationMs"],
+        "properties": {
+          "id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "additionalProperties": false,
+              "type": "object",
+              "required": ["key", "value"],
+              "properties": {
+                "key": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "url": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "durationMs": {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "warmupMs": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "params": {
+            "type": "object",
+            "patternProperties": {
+              "^(.*)$": {}
+            }
+          }
+        }
+      }
+    }
+  }
+}
