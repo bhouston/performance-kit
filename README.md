@@ -27,7 +27,7 @@ The runner rejects software GPUs by default. Use `--allow-software` for function
 
 ## See it in action
 
-[Screen-Space Fidelity](https://github.com/bhouston/three-ss-fidelity) uses performance-kit alongside fidelity-kit to benchmark Three-Base and other real-time Three variants. Its performance suite uses one repetition with vsync off, and its results are independent of fidelity image results.
+[Screen-Space Fidelity](https://github.com/bhouston/three-ss-fidelity) uses performance-kit alongside fidelity-kit to benchmark Three-Base and other real-time Three variants. Its performance suite runs each workload once with vsync off, and its results are independent of fidelity image results.
 
 ## Adopt it in your suite
 
@@ -37,7 +37,7 @@ Create a suite file with a flat list of entries. Every entry has a stable ID, na
 {
   "schemaVersion": 1,
   "name": "My Renderer Benchmarks",
-  "defaults": { "warmupMs": 2000, "repetitions": 1, "vsync": "on" },
+  "defaults": { "vsync": "on" },
   "entries": [
     {
       "id": "cube-my-renderer",
@@ -58,7 +58,7 @@ Instrument the renderer with the reporter API below, then run:
 pnpm cli run --suite suite.json --renderer-root renderer-pages --out results
 ```
 
-`params` pass through to the renderer verbatim. Each renderer/scene pair has one result; repeated runs replace it. Warmup defaults to two seconds. A suite must not contain duplicate renderer/scene pairs. Entry, renderer, and scene IDs use letters, numbers, `.`, `_`, or `-`, and start with a letter or number. Names are display text and may contain spaces. Give each renderer configuration its own ID, including variants such as `three-new--ssgi-half`, so the viewer and CLI can distinguish them. Use the generated [suite JSON Schema](packages/schema/schemas/suite.schema.json) for editor completion.
+`params` pass through to the renderer verbatim. Each renderer/scene pair has one result; repeated runs replace it. Measurement starts immediately from ready, with no warmup. A suite must not contain duplicate renderer/scene pairs. Entry, renderer, and scene IDs use letters, numbers, `.`, `_`, or `-`, and start with a letter or number. Names are display text and may contain spaces. Give each renderer configuration its own ID, including variants such as `three-new--ssgi-half`, so the viewer and CLI can distinguish them. Use the generated [suite JSON Schema](packages/schema/schemas/suite.schema.json) for editor completion.
 
 Each invocation writes a flat result folder:
 
@@ -67,12 +67,11 @@ results/
   README.md                         optional Markdown preamble above the results
   <renderer.id>/
     <scene.id>/
-      raw.json                      full timestamps and run status
       metrics.json                  processed statistics and bounded display data
       screenshot.avif               optional capture
 ```
 
-Captures use the same settings as ss-fidelity: AVIF quality 90, chroma subsampling `4:4:4`, and alpha removed. The browser captures lossless PNG after warmup and before the measured window; the runner converts it to AVIF after measurement finishes. Warmup frames stay on disk but are excluded from measured statistics. Timeouts and errors are written as results, and `run` exits nonzero when any entry fails.
+Captures use the same settings as ss-fidelity: AVIF quality 90, chroma subsampling `4:4:4`, and alpha removed. The browser captures lossless PNG after the measured run ends; the runner then converts it to AVIF. Frames are measured immediately from ready, including the first rendering frames, with no warmup wait. Each renderer/scene pair runs once and saves compact metrics.json directly; new runs never write raw.json. Timeouts and errors are written as results, and `run` exits nonzero when any entry fails.
 
 ### Results preamble
 
@@ -148,15 +147,17 @@ GPU helpers and the Three adapter are available in the reporter's `gpu` and `thr
 
 ## Measurement and statistics
 
-CPU timestamps are high-resolution epoch milliseconds tagged by domain. GPU values are decimal nanoseconds on a separate clock. Clock offset uses the minimum-round-trip sync sample; timestamps from different clocks are corrected before comparison.
+CPU timestamps are high-resolution epoch milliseconds tagged by domain. GPU values are decimal nanoseconds on a separate clock. Client durations are calculated within the client clock. Harness send/receive timestamps and clock-tagged message receipts are retained independently in the metrics timing context, in epoch seconds. There are no synchronization pings, offset/drift estimates or delivery discrepancy tables.
 
 Cards summarize median FPS, tail latency, jitter, and setup time. FPS is the reciprocal of the median frame interval. Durations use readable units: short costs appear in milliseconds, while longer setup and phase durations appear in seconds.
 
 Frame pacing uses consecutive frame-start differences inside the measured window. CPU submit time and GPU cost appear separately. Percentiles use linear interpolation at `(n − 1) p`; jitter is p75 − p25, and MAD is available in run details. Statistics use every measured raw sample before display series are reduced.
 
-Timeline axes use elapsed seconds. The ready marker separates setup from the render timeline, which includes warmup frames from ready onward. The measured interval is marked separately; warmup remains visible for context and contributes no frame pacing, CPU, GPU, or FPS statistics. Processed files store one numeric `frameSeconds` array with aligned `cpuMs` and `gpuMs` arrays and selected display indices, rather than duplicating object timestamps across series. Phase and block offsets use seconds; exact statistics and duration fields retain milliseconds.
+Timeline axes use elapsed seconds from the client start receipt. Every visible card timeline uses the longest timeline among the current filtered cards as its shared horizontal scale. Hovering a line chart shows elapsed time and the nearest frame's frame interval. Details include viewer-calculated framerate and setup watchdog responsiveness histograms, plus a Phases table with startup phase durations and total client setup time.
 
-The report derives setup latency, phase durations, watchdog lateness, merged blocked intervals, message-delivery latency, and harness/reporter discrepancies from raw timestamps. Frame-time colors transition green at 16.7 ms, yellow at 33.3 ms, and red at 50 ms; responsiveness transitions at 50, 100, and 300 ms. The CLI processes these statistics and bounded timeline data for both static and development reports. Run `pnpm cli process --out results` after upgrading the toolkit to regenerate existing metrics with the current display format; raw measurements remain unchanged.
+Metrics store consecutive `frameSeconds`, aligned `cpuSeconds` and `gpuSeconds`, and selected extrema indices for display. Exact measured `measuredIntervalSeconds` support CLI comparisons and browser histogram calculations without relying on rounded display timestamps. All durations use seconds; FPS remains frames per second. No histogram bins are stored on disk.
+
+The CLI computes exact summaries before writing metrics for both static and development reports. Frame-time colors transition green at 16.7 ms, yellow at 33.3 ms, and red at 50 ms; responsiveness transitions at 50, 100, and 300 ms. Run `pnpm cli process --out results` to migrate historical raw results to version 2 metrics and rebuild the index. Existing raw files are retained during migration; new metrics are canonical once migrated. Version 1 metrics without their historical raw data require a new benchmark run. Legacy suite `warmupMs` is accepted but ignored; `repetitions: 1` is accepted for compatibility, and larger values are rejected. Use `capture` to control the end-of-run screenshot; the old `captureAfterWarmup` option is accepted as a fallback.
 
 CLI A/B comparisons match scenes when comparing renderer IDs, renderer configurations when comparing scene IDs, and stable entry IDs when comparing directories. They pool frames for Mann–Whitney U and bootstrap whole runs for the median-ratio confidence interval, preserving within-run correlation. Mixed vsync modes are rejected. Small or single-run samples retain their uncertainty rather than establishing a speedup.
 
@@ -166,7 +167,7 @@ The default harness runs on `http://localhost:4400`, with local renderer files s
 
 Vsync defaults on. The off mode disables GPU vsync and the frame-rate limit; every result records the selected mode. Scheduling supports seeded shuffle, cooldown, and optional browser recycling.
 
-Use a dedicated GPU machine with a fixed power policy, driver, and Chrome version for performance comparisons. The normal CI validates code. The manual [GPU workflow](.github/workflows/benchmark.yml) requires a runner labeled `self-hosted` and `gpu`, and uploads raw results plus static reports after the run, including failures.
+Use a dedicated GPU machine with a fixed power policy, driver, and Chrome version for performance comparisons. The normal CI validates code. The manual [GPU workflow](.github/workflows/benchmark.yml) requires a runner labeled `self-hosted` and `gpu`, and uploads metrics plus static reports after the run, including failures.
 
 ## Development and releases
 
@@ -177,7 +178,7 @@ Use a dedicated GPU machine with a fixed power policy, driver, and Chrome versio
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Required checks are `pnpm build`, `pnpm tsc`, `pnpm lint`, `pnpm test --coverage`, and `pnpm audit --audit-level=high`. Dependency audit findings are reviewed in [AUDIT.md](AUDIT.md); coverage reports are uploaded with the CI artifacts.
 
-Changesets keeps the three public packages on a shared version. Add a changeset and run `pnpm version-packages`; a maintainer runs `pnpm release` with npm credentials after review. Publishing is not automatic. The v1 format is the first supported schema/protocol version; unknown future versions fail validation. Historical trends and additional browsers remain future extensions.
+Changesets keeps the three public packages on a shared version. Add a changeset and run `pnpm version-packages`; a maintainer runs `pnpm release` with npm credentials after review. Publishing is not automatic. Suites and protocol envelopes use version 1; persisted metrics use version 2. Unknown future versions fail validation. Historical trends and additional browsers remain future extensions.
 
 ## Author
 

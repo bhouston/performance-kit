@@ -20,11 +20,13 @@
       "properties": {
         "warmupMs": {
           "minimum": 0,
+          "deprecated": true,
           "type": "number"
         },
         "repetitions": {
           "minimum": 1,
           "maximum": 1,
+          "deprecated": true,
           "type": "integer"
         },
         "order": {
@@ -43,7 +45,11 @@
           "exclusiveMinimum": 0,
           "type": "number"
         },
+        "capture": {
+          "type": "boolean"
+        },
         "captureAfterWarmup": {
+          "deprecated": true,
           "type": "boolean"
         },
         "vsync": {
@@ -115,6 +121,7 @@
           },
           "warmupMs": {
             "minimum": 0,
+            "deprecated": true,
             "type": "number"
           },
           "params": {

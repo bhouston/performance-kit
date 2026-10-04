@@ -1,8 +1,8 @@
 import { it, expect } from 'vitest';
-import type { RunResult } from 'performance-kit-schema';
+import { processRun, type ProcessedResult } from 'performance-kit-schema';
 import { compareGroups, selectComparisonGroup } from './comparison.js';
-function run(id: string, scene: string, renderer: string, interval: number): RunResult {
-  return {
+function run(id: string, scene: string, renderer: string, interval: number): ProcessedResult {
+  return processRun({
     schemaVersion: 1,
     runId: id,
     entry: {
@@ -24,7 +24,7 @@ function run(id: string, scene: string, renderer: string, interval: number): Run
       })),
     },
     status: 'ok',
-  };
+  });
 }
 it('pairs directories by stable entry id without pooling scenes', () => {
   const a = [run('cube', 'cube', 'a', 10), run('sponza', 'sponza', 'a', 30)],

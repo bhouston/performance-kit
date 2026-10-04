@@ -1,11 +1,10 @@
 import type { Entry, Suite } from 'performance-kit-schema';
 export interface ScheduledRun {
   entry: Entry;
-  repetition: number;
 }
 export function scheduleSuite(
   suite: Suite,
-  options: { renderer?: string[]; scene?: string[]; seed?: number; repetitions?: number } = {},
+  options: { renderer?: string[]; scene?: string[]; seed?: number } = {},
 ): ScheduledRun[] {
   if (options.seed !== undefined && !Number.isFinite(options.seed)) throw new Error('seed must be finite');
   const entries = suite.entries.filter(
@@ -23,15 +22,13 @@ export function scheduleSuite(
     }
     return values;
   };
-  const repetitions = options.repetitions ?? suite.defaults?.repetitions ?? 1;
-  if (repetitions !== 1) throw new Error('Flat result storage requires exactly one repetition');
   const identities = new Set<string>();
   for (const entry of suite.entries) {
     const identity = entry.renderer.id + '/' + entry.scene.id;
     if (identities.has(identity)) throw new Error(`Duplicate renderer/scene workload: ${identity}`);
     identities.add(identity);
   }
-  return shuffle([...entries]).map((entry) => ({ entry, repetition: 1 }));
+  return shuffle([...entries]).map((entry) => ({ entry }));
 }
 export const chromeFlags = (vsync: 'on' | 'off') => [
   '--disable-background-timer-throttling',

@@ -42,13 +42,12 @@ const select = (points: Point[], limit = MAX_TIMELINE_POINTS) =>
 export function processRun(run: RunResult): ProcessedResult {
   const full = deriveRun(run);
   const reporterOrigin =
-    full.offsetMs !== undefined
-      ? run.harness.startSent + full.offsetMs
-      : (run.reporter.hello ??
-        run.reporter.phases?.find((phase) => phase.start.clock === 'reporter')?.start.t ??
-        run.reporter.frames[0]?.cpuStart ??
-        run.reporter.ready ??
-        0);
+    run.reporter.startReceived ??
+    run.reporter.hello ??
+    run.reporter.phases?.find((phase) => phase.start.clock === 'reporter')?.start.t ??
+    run.reporter.frames[0]?.cpuStart ??
+    run.reporter.ready ??
+    0;
   const local = (stamp: number) => seconds(stamp - reporterOrigin);
   const eligible =
     run.status !== 'ok' && run.reporter.runStart === undefined
@@ -117,11 +116,7 @@ export function processRun(run: RunResult): ProcessedResult {
     ...optional('typicalFps', full.fps),
     ...optional('tailFps', full.p95 ? 1000 / full.p95 : undefined),
     ...optional('setupSeconds', durationSeconds(full.setupMs)),
-    ...optional('reporterSetupSeconds', durationSeconds(full.reporterSetupMs)),
-    ...optional('hiddenStartupSeconds', durationSeconds(full.hiddenStartupMs)),
     ...optional('unaccountedSeconds', durationSeconds(full.unaccountedMs)),
-    ...optional('offsetSeconds', durationSeconds(full.offsetMs)),
-    ...optional('driftSeconds', durationSeconds(full.driftMs)),
     ...optional(
       'cpuMedian',
       durationSeconds(
@@ -164,32 +159,20 @@ export function processRun(run: RunResult): ProcessedResult {
       statistics.phaseDurations[phase.phase] = (statistics.phaseDurations[phase.phase] ?? 0) + phase.durationMs;
   for (const phase of ['load', 'process', 'compile'] as const)
     if (statistics.phaseDurations[phase] !== undefined) statistics.phaseDurations[phase]! /= 1000;
-  const values = full.intervals.map((point) => point.value);
-  const max = values.reduce((value, item) => Math.max(value, item), 0);
-  const numberBins = values.length ? Math.min(40, values.length) : 0;
-  const width = numberBins ? max / numberBins : 0;
-  const bins = Array.from({ length: numberBins }, (_, index) => ({
-    start: costSeconds(index * width),
-    end: costSeconds((index + 1) * width),
-    count: 0,
-  }));
-  for (const value of values) bins[Math.min(numberBins - 1, Math.floor(value / width))]!.count++;
-  const histogram = {
-    bins,
-    count: values.length,
-    maxCount: bins.reduce((value, bin) => Math.max(value, bin.count), 0),
-  };
-  const phases = full.phases.slice(0, 128).map((phase, index) => {
-    const raw = run.reporter.phases![index]!;
-    return {
-      phase: phase.phase,
-      start: raw.start.clock === 'harness' ? seconds(raw.start.t - run.harness.startSent) : local(phase.start),
-      ...(phase.end === undefined
-        ? {}
-        : { end: raw.end?.clock === 'harness' ? seconds(raw.end.t - run.harness.startSent) : local(phase.end) }),
-      ...optional('durationSeconds', durationSeconds(phase.durationMs)),
-    };
-  });
+  const phases = full.phases
+    .flatMap((phase, index) => {
+      const raw = run.reporter.phases![index]!;
+      if (raw.start.clock !== 'reporter' || (raw.end && raw.end.clock !== 'reporter')) return [];
+      return [
+        {
+          phase: phase.phase,
+          start: local(phase.start),
+          ...(phase.end === undefined ? {} : { end: local(phase.end) }),
+          ...optional('durationSeconds', durationSeconds(phase.durationMs)),
+        },
+      ];
+    })
+    .slice(0, 128);
   const blocks = longest(full.blocks, 256).map((block) => ({
     ...block,
     sources: [...block.sources],
@@ -208,24 +191,20 @@ export function processRun(run: RunResult): ProcessedResult {
   }));
   const maxTime = Math.max(
     0,
-    seconds(run.harness.teardown - run.harness.startSent),
-    ...[run.reporter.runEnd, run.reporter.ready, full.intervals.at(-1)?.t, full.cpu.at(-1)?.t, full.watchdog.at(-1)?.t]
+    ...[run.reporter.runEnd, run.reporter.ready, visible.at(-1)?.cpuStart, ticks.at(-1)]
       .filter((value): value is number => value !== undefined)
       .map(local),
+    ...phases.map((phase) => phase.end ?? phase.start),
+    ...blocks.map((block) => block.end),
   );
-  const discrepancies = full.discrepancies
-    .toSorted((a, b) => Math.abs(b.ms) - Math.abs(a.ms))
-    .slice(0, 256)
-    .map((item) => ({ name: item.name, seconds: item.ms / 1000, flagged: item.flagged }));
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     runId: run.runId,
     screenshot: run.capture !== undefined,
     ...(run.suiteName === undefined ? {} : { suiteName: run.suiteName }),
     entry: structuredClone(run.entry),
     config: {
       durationSeconds: run.config.durationMs / 1000,
-      warmupSeconds: run.config.warmupMs / 1000,
       vsync: run.config.vsync,
     },
     ...(run.environment === undefined ? {} : { environment: structuredClone(run.environment) }),
@@ -248,9 +227,27 @@ export function processRun(run: RunResult): ProcessedResult {
       watchdogPeriodSeconds: 0.016,
       phases,
       blocks,
-      discrepancies,
     },
-    histogram,
+    measuredIntervalSeconds: full.intervals.map((point) => point.value / 1000),
+    timing: {
+      timeUnit: 'epochSeconds',
+      harness: Object.fromEntries(
+        Object.entries(run.harness).map(([key, value]) => [key, value / 1000]),
+      ) as ProcessedResult['timing']['harness'],
+      reporter: Object.fromEntries(
+        ['hello', 'startReceived', 'ready', 'runStart', 'runEnd'].flatMap((key) => {
+          const value = run.reporter[key as keyof typeof run.reporter];
+          return typeof value === 'number' ? [[key, value / 1000]] : [];
+        }),
+      ),
+      messages: (run.messages ?? [])
+        .filter((message) => !['syncPing', 'syncPong'].includes(message.type))
+        .map((message) => ({
+          ...message,
+          sentAt: { ...message.sentAt, t: message.sentAt.t / 1000 },
+          receivedAt: { ...message.receivedAt, t: message.receivedAt.t / 1000 },
+        })),
+    },
     attribution,
   };
 }

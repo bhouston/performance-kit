@@ -287,7 +287,7 @@ h3 {
 }
 .detail-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 24px;
   font-size: 12px;
 }
@@ -547,4 +547,19 @@ footer a:hover {
   .reloaded {
     animation: none;
   }
+}
+
+.timeline-container {
+  position: relative;
+}
+.timeline-tooltip {
+  position: absolute;
+  pointer-events: none;
+  padding: 4px 8px;
+  background: var(--background);
+  color: var(--foreground);
+  border: 1px solid var(--chart-reference);
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
 }

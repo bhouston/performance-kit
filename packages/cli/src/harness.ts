@@ -4,7 +4,6 @@ export async function harnessRun(input: {
   url: string;
   entryId: string;
   params: Record<string, unknown>;
-  warmupMs: number;
   durationMs: number;
   setupTimeoutMs: number;
   capture: boolean;
@@ -39,8 +38,7 @@ export async function harnessRun(input: {
     blocks: [],
     watchdogTicks: [],
   };
-  const messages: unknown[] = [],
-    samples: unknown[] = [];
+  const messages: unknown[] = [];
   let environment: Record<string, unknown> = {};
   let seq = 0,
     receivedSeq = -1;
@@ -121,17 +119,6 @@ export async function harnessRun(input: {
         if (Array.isArray(receiptLogs)) messages.push(...receiptLogs);
         harness.runEndObserved = receivedAt;
       }
-      if (message.type === 'syncPong') {
-        samples.push({ ...message.payload, t3: receivedAt });
-        // Startup receipt logs arrive with runEnd; tail pings happen afterwards.
-        if (reporter.runEnd !== undefined)
-          messages.push({
-            type: 'syncPing',
-            direction: 'toReporter',
-            sentAt: { clock: 'harness', t: message.payload.t0 },
-            receivedAt: { clock: 'reporter', t: message.payload.t1 },
-          });
-      }
       if (message.type === 'error') throw new Error(String(message.payload.message));
       const item = waiting.get(message.type)?.shift();
       if (item) {
@@ -173,23 +160,15 @@ export async function harnessRun(input: {
   let status: 'ok' | 'error' | 'timeout' = 'ok';
   let error: { message: string } | undefined;
   let capture: { at: number; bytes: number[] } | undefined;
-  const sync = async (count: number) => {
-    for (let i = 0; i < count; i++) {
-      send('syncPing', { t0: now() });
-      await wait('syncPong');
-    }
-  };
   try {
     await wait('hello');
-    await sync(10);
     harness.startSent = send('start', {
       entryId: input.entryId,
       params: input.params,
-      warmupMs: input.warmupMs,
     });
     await wait('ready');
-    reporter.warmupStart = reporter.ready;
-    await new Promise((resolve) => setTimeout(resolve, input.warmupMs));
+    harness.runSent = send('run', { durationMs: input.durationMs });
+    await wait('runEnd', input.durationMs + input.setupTimeoutMs);
     if (input.capture) {
       harness.captureSent = send('capture', { mimeType: 'image/png' });
       const response = await wait('capture');
@@ -198,9 +177,6 @@ export async function harnessRun(input: {
         bytes: Array.from(new Uint8Array(response.payload.bytes as ArrayBuffer)),
       };
     }
-    harness.runSent = send('run', { durationMs: input.durationMs });
-    await wait('runEnd', input.durationMs + input.setupTimeoutMs);
-    await sync(5);
   } catch (caught) {
     const message = (caught as Error).message;
     status = message.startsWith('Timeout') ? 'timeout' : 'error';
@@ -219,7 +195,6 @@ export async function harnessRun(input: {
     harness,
     reporter,
     messages,
-    clockSync: { samples },
     environment,
     capture,
     status,

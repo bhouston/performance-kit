@@ -1,4 +1,4 @@
-import type { RunResult, ClockSyncSample } from './index.js';
+import type { RunResult, ProcessedResult } from './index.js';
 
 /** Linear interpolation between adjacent sorted observations, with endpoints clamped. */
 export function percentile(values: readonly number[], p: number): number | undefined {
@@ -8,14 +8,6 @@ export function percentile(values: readonly number[], p: number): number | undef
   const low = Math.floor(index);
   return sorted[low]! + (sorted[Math.ceil(index)]! - sorted[low]!) * (index - low);
 }
-export function clockOffset(samples: readonly ClockSyncSample[] = []): number | undefined {
-  const valid = samples.filter((s) => [s.t0, s.t1, s.t2, s.t3].every(Number.isFinite) && s.t3 - s.t0 >= s.t2 - s.t1);
-  const best = valid.reduce<ClockSyncSample | undefined>(
-    (a, b) => (!a || b.t3 - b.t0 - b.t2 + b.t1 < a.t3 - a.t0 - a.t2 + a.t1 ? b : a),
-    undefined,
-  );
-  return best ? (best.t1 - best.t0 + (best.t2 - best.t3)) / 2 : undefined;
-}
 export interface Point {
   t: number;
   value: number;
@@ -24,11 +16,6 @@ export interface Block {
   start: number;
   end: number;
   sources: string[];
-}
-export interface Discrepancy {
-  name: string;
-  ms: number;
-  flagged: boolean;
 }
 export function mergeBlocks(blocks: readonly Block[]): Block[] {
   const merged: Block[] = [];
@@ -43,11 +30,6 @@ export function mergeBlocks(blocks: readonly Block[]): Block[] {
   return merged;
 }
 export function deriveRun(run: RunResult) {
-  const offsetMs = clockOffset(run.clockSync?.samples);
-  const samples = run.clockSync?.samples ?? [];
-  const startOffset = samples.length >= 15 ? clockOffset(samples.slice(0, 10)) : undefined;
-  const endOffset = samples.length >= 15 ? clockOffset(samples.slice(-5)) : undefined;
-  const driftMs = startOffset !== undefined && endOffset !== undefined ? endOffset - startOffset : undefined;
   const start = run.reporter.runStart;
   const end = run.reporter.runEnd;
   // Explicit measured bounds exclude warmup; minimal frame-only results use all supplied frames.
@@ -91,10 +73,8 @@ export function deriveRun(run: RunResult) {
     ...watchdog.filter((p) => p.value >= 50).map((p) => ({ start: p.t - p.value, end: p.t, sources: ['watchdog'] })),
   ]);
   const ready = run.reporter.ready;
-  const setupMs = ready !== undefined && offsetMs !== undefined ? ready - offsetMs - run.harness.startSent : undefined;
-  const reporterSetupMs =
-    ready !== undefined && run.reporter.hello !== undefined ? ready - run.reporter.hello : undefined;
-  const setupStart = offsetMs !== undefined ? run.harness.startSent + offsetMs : run.reporter.hello;
+  const setupStart = run.reporter.startReceived ?? run.reporter.hello;
+  const setupMs = ready !== undefined && setupStart !== undefined ? ready - setupStart : undefined;
   const setupBlocks =
     setupStart === undefined || ready === undefined
       ? []
@@ -112,25 +92,17 @@ export function deriveRun(run: RunResult) {
     end: p.end?.t,
     durationMs: p.end && p.start.clock === p.end.clock ? p.end.t - p.start.t : undefined,
   }));
-  const completed = phases.filter((p) => p.end !== undefined);
+  const completed = phases.filter(
+    (p, index) =>
+      p.end !== undefined &&
+      run.reporter.phases![index]!.start.clock === 'reporter' &&
+      run.reporter.phases![index]!.end?.clock === 'reporter',
+  );
   const phaseUnion = mergeBlocks(completed.map((p) => ({ start: p.start, end: p.end!, sources: [p.phase] })));
   const accounted =
     setupStart === undefined || ready === undefined
       ? 0
       : phaseUnion.reduce((sum, p) => sum + Math.max(0, Math.min(p.end, ready) - Math.max(p.start, setupStart)), 0);
-  const discrepancies: Discrepancy[] = [];
-  const add = (name: string, ms: number) => discrepancies.push({ name, ms, flagged: ms > 50 });
-  if (offsetMs !== undefined) {
-    if (start !== undefined && run.harness.runSent !== undefined)
-      add('Run delivery', start - offsetMs - run.harness.runSent);
-    if (end !== undefined && run.harness.runEndObserved !== undefined)
-      add('Run completion delivery', run.harness.runEndObserved - (end - offsetMs));
-    for (const m of run.messages ?? []) {
-      const sent = m.sentAt.t - (m.sentAt.clock === 'reporter' ? offsetMs : 0);
-      const received = m.receivedAt.t - (m.receivedAt.clock === 'reporter' ? offsetMs : 0);
-      add(m.type, received - sent);
-    }
-  }
   return {
     intervals,
     cpu,
@@ -141,24 +113,25 @@ export function deriveRun(run: RunResult) {
     iqr,
     mad,
     fps: median ? 1000 / median : undefined,
-    offsetMs,
-    driftMs,
     setupMs,
-    reporterSetupMs,
-    hiddenStartupMs: setupMs !== undefined && reporterSetupMs !== undefined ? setupMs - reporterSetupMs : undefined,
     unaccountedMs: setupMs === undefined ? undefined : Math.max(0, setupMs - accounted),
     phases,
     blocks,
     watchdog,
     setupMaxBlockMs: Math.max(0, ...setupBlocks.map((b) => b.end - b.start)),
     setupBlockedMs: setupBlocks.reduce((n, b) => n + b.end - b.start, 0),
-    discrepancies,
   };
 }
-export function summarizeRuns(runs: readonly RunResult[]) {
+export function summarizeRuns(runs: readonly (RunResult | ProcessedResult)[]) {
   const medians = runs
     .filter((r) => r.status === 'ok')
-    .map((r) => deriveRun(r).median)
+    .map((r) =>
+      r.schemaVersion === 2
+        ? r.statistics.median === undefined
+          ? undefined
+          : r.statistics.median * 1000
+        : deriveRun(r).median,
+    )
     .filter((v): v is number => v !== undefined);
   const median = percentile(medians, 0.5),
     min = medians.length ? Math.min(...medians) : undefined,
@@ -197,8 +170,8 @@ export function mannWhitney(a: readonly number[], b: readonly number[]) {
   return { u, pValue: Math.min(1, 2 * tail) };
 }
 export function compareRuns(
-  a: readonly RunResult[],
-  b: readonly RunResult[],
+  a: readonly (RunResult | ProcessedResult)[],
+  b: readonly (RunResult | ProcessedResult)[],
   options: { seed?: number; iterations?: number } = {},
 ) {
   const iterations = options.iterations ?? 2000;
@@ -210,11 +183,19 @@ export function compareRuns(
     throw new Error('Cannot compare different vsync modes');
   const av = a
       .filter((r) => r.status === 'ok')
-      .map((r) => deriveRun(r).intervals.map((p) => p.value))
+      .map((r) =>
+        r.schemaVersion === 2
+          ? r.measuredIntervalSeconds.map((value) => value * 1000)
+          : deriveRun(r).intervals.map((p) => p.value),
+      )
       .filter((v) => v.length),
     bv = b
       .filter((r) => r.status === 'ok')
-      .map((r) => deriveRun(r).intervals.map((p) => p.value))
+      .map((r) =>
+        r.schemaVersion === 2
+          ? r.measuredIntervalSeconds.map((value) => value * 1000)
+          : deriveRun(r).intervals.map((p) => p.value),
+      )
       .filter((v) => v.length);
   if (!av.length || !bv.length) throw new Error('Comparison requires measured frames');
   const medianA = percentile(av.flat(), 0.5)!,

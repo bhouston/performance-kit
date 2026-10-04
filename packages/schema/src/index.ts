@@ -71,7 +71,7 @@ export const EntrySchema = object({
   scene: NamedEntitySchema,
   url: Type.String({ minLength: 1 }),
   durationMs: positive,
-  warmupMs: Type.Optional(time),
+  warmupMs: Type.Optional(Type.Number({ minimum: 0, deprecated: true })),
   params: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
 });
 export type Entry = Static<typeof EntrySchema>;
@@ -83,11 +83,12 @@ export const SuiteSchema = Type.Object(
     name: Type.String(),
     defaults: Type.Optional(
       object({
-        warmupMs: Type.Optional(time),
-        repetitions: Type.Optional(Type.Integer({ minimum: 1, maximum: 1 })),
+        warmupMs: Type.Optional(Type.Number({ minimum: 0, deprecated: true })),
+        repetitions: Type.Optional(Type.Integer({ minimum: 1, maximum: 1, deprecated: true })),
         order: Type.Optional(Type.Union([Type.Literal('interleaved'), Type.Literal('sequential')])),
         setupTimeoutMs: Type.Optional(positive),
-        captureAfterWarmup: Type.Optional(Type.Boolean()),
+        capture: Type.Optional(Type.Boolean()),
+        captureAfterWarmup: Type.Optional(Type.Boolean({ deprecated: true })),
         vsync: Type.Optional(vsync),
       }),
     ),
@@ -131,7 +132,7 @@ export const RunResultSchema = Type.Object(
       url: Type.String(),
     }),
     repetition: Type.Optional(Type.Integer({ minimum: 1 })),
-    config: object({ durationMs: positive, warmupMs: time, vsync }),
+    config: object({ durationMs: positive, warmupMs: Type.Optional(time), vsync }),
     environment: Type.Optional(EnvironmentSchema),
     harness: object({
       iframeCreated: Type.Optional(time),
@@ -144,6 +145,7 @@ export const RunResultSchema = Type.Object(
     clockSync: Type.Optional(object({ samples: Type.Array(ClockSyncSampleSchema) })),
     messages: Type.Optional(Type.Array(MessageLogItemSchema)),
     reporter: object({
+      startReceived: Type.Optional(time),
       hello: Type.Optional(time),
       phases: Type.Optional(Type.Array(PhaseMarkSchema)),
       ready: Type.Optional(time),
@@ -168,12 +170,12 @@ const displayNumber = Type.Number();
 const optionalNumber = Type.Optional(displayNumber);
 export const ProcessedResultSchema = Type.Object(
   {
-    schemaVersion: Type.Literal(1),
+    schemaVersion: Type.Literal(2),
     runId: Type.String({ minLength: 1 }),
     suiteName: Type.Optional(Type.String()),
     screenshot: Type.Boolean(),
     entry: RunResultSchema.properties.entry,
-    config: object({ durationSeconds: positive, warmupSeconds: time, vsync }),
+    config: object({ durationSeconds: positive, vsync }),
     environment: Type.Optional(EnvironmentSchema),
     status: RunResultSchema.properties.status,
     error: RunResultSchema.properties.error,
@@ -190,13 +192,9 @@ export const ProcessedResultSchema = Type.Object(
       typicalFps: optionalNumber,
       tailFps: optionalNumber,
       setupSeconds: optionalNumber,
-      reporterSetupSeconds: optionalNumber,
-      hiddenStartupSeconds: optionalNumber,
       unaccountedSeconds: optionalNumber,
       setupMaxBlockSeconds: displayNumber,
       setupBlockedSeconds: displayNumber,
-      offsetSeconds: optionalNumber,
-      driftSeconds: optionalNumber,
       cpuMedian: optionalNumber,
       cpuP95: optionalNumber,
       gpuMedian: optionalNumber,
@@ -235,16 +233,27 @@ export const ProcessedResultSchema = Type.Object(
         }),
         { maxItems: 256 },
       ),
-      discrepancies: Type.Array(object({ name: Type.String(), seconds: displayNumber, flagged: Type.Boolean() }), {
-        maxItems: 256,
-      }),
     }),
-    histogram: object({
-      bins: Type.Array(object({ start: displayNumber, end: displayNumber, count: Type.Integer({ minimum: 0 }) }), {
-        maxItems: 40,
+    // Exact measured observations support comparison and client-side histograms.
+    measuredIntervalSeconds: Type.Array(positive),
+    timing: object({
+      timeUnit: Type.Literal('epochSeconds'),
+      harness: object({
+        iframeCreated: optionalNumber,
+        startSent: displayNumber,
+        runSent: optionalNumber,
+        runEndObserved: optionalNumber,
+        captureSent: optionalNumber,
+        teardown: displayNumber,
       }),
-      count: Type.Integer({ minimum: 0 }),
-      maxCount: Type.Integer({ minimum: 0 }),
+      reporter: object({
+        hello: optionalNumber,
+        startReceived: optionalNumber,
+        ready: optionalNumber,
+        runStart: optionalNumber,
+        runEnd: optionalNumber,
+      }),
+      messages: Type.Array(MessageLogItemSchema),
     }),
     attribution: Type.Array(
       object({
@@ -262,7 +271,7 @@ export const ProcessedResultSchema = Type.Object(
   },
   {
     additionalProperties: false,
-    $id: 'https://bhouston.github.io/performance-kit/schema/v1/processed-result.schema.json',
+    $id: 'https://bhouston.github.io/performance-kit/schema/v2/processed-result.schema.json',
   },
 );
 export type ProcessedResult = Static<typeof ProcessedResultSchema>;
@@ -286,13 +295,11 @@ const envelope = <T extends string, P extends TSchema>(type: T, payload: P) =>
     payload,
   });
 export const protocolSchemas = {
-  syncPing: envelope('syncPing', object({ t0: time })),
   start: envelope(
     'start',
     object({
       entryId: Type.String(),
       params: Type.Record(Type.String(), Type.Unknown()),
-      warmupMs: time,
     }),
   ),
   captureRequest: envelope('capture', object({ mimeType: Type.Literal('image/png') })),
@@ -309,13 +316,13 @@ export const protocolSchemas = {
       }),
     }),
   ),
-  syncPong: envelope('syncPong', object({ t0: time, t1: time, t2: time })),
   phase: envelope('phase', PhaseMarkSchema),
   ready: envelope('ready', object({ at: time })),
   captureResponse: envelope('capture', object({ at: time, bytes: Type.Unsafe<ArrayBuffer>({}) })),
   runEnd: envelope(
     'runEnd',
     object({
+      startReceived: Type.Optional(time),
       runStart: Type.Optional(time),
       runEnd: time,
       frames: Type.Array(FrameRecordSchema),
@@ -336,7 +343,6 @@ export const protocolSchemas = {
   progress: envelope('progress', object({ at: time, frameCount: Type.Integer({ minimum: 0 }) })),
 };
 export const MessageToReporterSchema = Type.Union([
-  protocolSchemas.syncPing,
   protocolSchemas.start,
   protocolSchemas.captureRequest,
   protocolSchemas.run,
@@ -344,7 +350,6 @@ export const MessageToReporterSchema = Type.Union([
 ]);
 export const MessageToHarnessSchema = Type.Union([
   protocolSchemas.hello,
-  protocolSchemas.syncPong,
   protocolSchemas.phase,
   protocolSchemas.ready,
   protocolSchemas.captureResponse,
@@ -366,6 +371,18 @@ export const validateProcessedResult: ValidateFunction<ProcessedResult> = Object
     if (!valid) return false;
     const metrics = value as ProcessedResult;
     const timeline = metrics.timeline;
+    if (metrics.measuredIntervalSeconds.length !== metrics.statistics.intervalCount) {
+      validateProcessedResult.errors = [
+        {
+          keyword: 'alignment',
+          instancePath: '/measuredIntervalSeconds',
+          schemaPath: '',
+          params: {},
+          message: 'must match intervalCount',
+        },
+      ];
+      return false;
+    }
     const error = (instancePath: string, message: string) => {
       validateProcessedResult.errors = [{ keyword: 'alignment', instancePath, schemaPath: '', params: {}, message }];
       return false;

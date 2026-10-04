@@ -1,6 +1,6 @@
 {
   "additionalProperties": false,
-  "$id": "https://bhouston.github.io/performance-kit/schema/v1/processed-result.schema.json",
+  "$id": "https://bhouston.github.io/performance-kit/schema/v2/processed-result.schema.json",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -11,12 +11,13 @@
     "status",
     "statistics",
     "timeline",
-    "histogram",
+    "measuredIntervalSeconds",
+    "timing",
     "attribution"
   ],
   "properties": {
     "schemaVersion": {
-      "const": 1,
+      "const": 2,
       "type": "number"
     },
     "runId": {
@@ -78,14 +79,10 @@
     "config": {
       "additionalProperties": false,
       "type": "object",
-      "required": ["durationSeconds", "warmupSeconds", "vsync"],
+      "required": ["durationSeconds", "vsync"],
       "properties": {
         "durationSeconds": {
           "exclusiveMinimum": 0,
-          "type": "number"
-        },
-        "warmupSeconds": {
-          "minimum": 0,
           "type": "number"
         },
         "vsync": {
@@ -282,12 +279,6 @@
         "setupSeconds": {
           "type": "number"
         },
-        "reporterSetupSeconds": {
-          "type": "number"
-        },
-        "hiddenStartupSeconds": {
-          "type": "number"
-        },
         "unaccountedSeconds": {
           "type": "number"
         },
@@ -295,12 +286,6 @@
           "type": "number"
         },
         "setupBlockedSeconds": {
-          "type": "number"
-        },
-        "offsetSeconds": {
-          "type": "number"
-        },
-        "driftSeconds": {
           "type": "number"
         },
         "cpuMedian": {
@@ -347,8 +332,7 @@
         "watchdogIndices",
         "watchdogPeriodSeconds",
         "phases",
-        "blocks",
-        "discrepancies"
+        "blocks"
       ],
       "properties": {
         "timeUnit": {
@@ -494,62 +478,141 @@
               }
             }
           }
-        },
-        "discrepancies": {
-          "maxItems": 256,
-          "type": "array",
-          "items": {
-            "additionalProperties": false,
-            "type": "object",
-            "required": ["name", "seconds", "flagged"],
-            "properties": {
-              "name": {
-                "type": "string"
-              },
-              "seconds": {
-                "type": "number"
-              },
-              "flagged": {
-                "type": "boolean"
-              }
-            }
-          }
         }
       }
     },
-    "histogram": {
+    "measuredIntervalSeconds": {
+      "type": "array",
+      "items": {
+        "exclusiveMinimum": 0,
+        "type": "number"
+      }
+    },
+    "timing": {
       "additionalProperties": false,
       "type": "object",
-      "required": ["bins", "count", "maxCount"],
+      "required": ["timeUnit", "harness", "reporter", "messages"],
       "properties": {
-        "bins": {
-          "maxItems": 40,
+        "timeUnit": {
+          "const": "epochSeconds",
+          "type": "string"
+        },
+        "harness": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": ["startSent", "teardown"],
+          "properties": {
+            "iframeCreated": {
+              "type": "number"
+            },
+            "startSent": {
+              "type": "number"
+            },
+            "runSent": {
+              "type": "number"
+            },
+            "runEndObserved": {
+              "type": "number"
+            },
+            "captureSent": {
+              "type": "number"
+            },
+            "teardown": {
+              "type": "number"
+            }
+          }
+        },
+        "reporter": {
+          "additionalProperties": false,
+          "type": "object",
+          "properties": {
+            "hello": {
+              "type": "number"
+            },
+            "startReceived": {
+              "type": "number"
+            },
+            "ready": {
+              "type": "number"
+            },
+            "runStart": {
+              "type": "number"
+            },
+            "runEnd": {
+              "type": "number"
+            }
+          }
+        },
+        "messages": {
           "type": "array",
           "items": {
             "additionalProperties": false,
             "type": "object",
-            "required": ["start", "end", "count"],
+            "required": ["type", "direction", "sentAt", "receivedAt"],
             "properties": {
-              "start": {
-                "type": "number"
+              "type": {
+                "type": "string"
               },
-              "end": {
-                "type": "number"
+              "direction": {
+                "anyOf": [
+                  {
+                    "const": "toReporter",
+                    "type": "string"
+                  },
+                  {
+                    "const": "toHarness",
+                    "type": "string"
+                  }
+                ]
               },
-              "count": {
-                "minimum": 0,
-                "type": "integer"
+              "sentAt": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": ["clock", "t"],
+                "properties": {
+                  "clock": {
+                    "anyOf": [
+                      {
+                        "const": "harness",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reporter",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "t": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                }
+              },
+              "receivedAt": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": ["clock", "t"],
+                "properties": {
+                  "clock": {
+                    "anyOf": [
+                      {
+                        "const": "harness",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reporter",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "t": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                }
               }
             }
           }
-        },
-        "count": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "maxCount": {
-          "minimum": 0,
-          "type": "integer"
         }
       }
     },

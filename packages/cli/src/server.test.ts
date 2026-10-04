@@ -1,3 +1,4 @@
+import { processRun, type RunResult } from 'performance-kit-schema';
 import { it, expect } from 'vitest';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -95,7 +96,7 @@ it('dev coalesces atomic writes, handles added/removed results and README, and c
   try {
     expect(await (await fetch(`${server.url}/index.json`)).json()).toMatchObject({ liveReload: true });
     await vi.waitFor(() => expect(stream.events).toEqual([{ type: 'indexChanged' }]));
-    const result = {
+    const result = processRun({
       schemaVersion: 1,
       runId: 'test',
       entry: {
@@ -109,12 +110,12 @@ it('dev coalesces atomic writes, handles added/removed results and README, and c
       harness: { startSent: 1, teardown: 2 },
       reporter: { frames: [] },
       status: 'ok',
-    };
-    const temp = join(directory, '.raw.json.tmp');
+    } as RunResult);
+    const temp = join(directory, '.metrics.json.tmp');
     await writeFile(temp, JSON.stringify(result));
     await new Promise((resolve) => setTimeout(resolve, 650));
     expect(stream.events).toHaveLength(1); // Temporary writes (and parent metadata) stay silent.
-    await rename(temp, join(directory, 'raw.json'));
+    await rename(temp, join(directory, 'metrics.json'));
     await writeFile(join(root, 'README.md'), '# One');
     await writeFile(join(root, 'README.md'), '# Two');
     await vi.waitFor(() => expect(stream.events).toHaveLength(3), { timeout: 3000 });
@@ -124,12 +125,11 @@ it('dev coalesces atomic writes, handles added/removed results and README, and c
     ]);
     expect((await (await fetch(`${server.url}/index.json`)).json()).results).toHaveLength(1);
     expect((await (await fetch(`${server.url}/test/cube/metrics.json`)).json()).runId).toBe('test');
-    // A partial raw write must keep the prior processed file and remain silent.
-    await writeFile(join(directory, 'raw.json'), '{');
+    // A partial metrics write must remain silent until a complete result is published.
+    await writeFile(join(directory, 'metrics.json'), '{');
     await new Promise((resolve) => setTimeout(resolve, 800));
     expect(stream.events).toHaveLength(3);
-    expect((await (await fetch(`${server.url}/test/cube/metrics.json`)).json()).runId).toBe('test');
-    await writeFile(join(directory, 'raw.json'), JSON.stringify({ ...result, runId: 'updated' }));
+    await writeFile(join(directory, 'metrics.json'), JSON.stringify({ ...result, runId: 'updated' }));
     await vi.waitFor(
       () =>
         expect(stream.events.some((event) => event.type === 'resultChanged') && stream.events.length > 3).toBe(true),
@@ -138,7 +138,7 @@ it('dev coalesces atomic writes, handles added/removed results and README, and c
     expect((await (await fetch(`${server.url}/test/cube/metrics.json`)).json()).runId).toBe('updated');
     await new Promise((resolve) => setTimeout(resolve, 800));
     const beforeDeletion = stream.events.length;
-    await rm(join(directory, 'raw.json'));
+    await rm(join(directory, 'metrics.json'));
     await rm(join(root, 'README.md'));
     await vi.waitFor(() => expect(stream.events).toHaveLength(beforeDeletion + 2), { timeout: 3000 });
     expect(stream.events.slice(beforeDeletion)).toEqual([
@@ -150,7 +150,7 @@ it('dev coalesces atomic writes, handles added/removed results and README, and c
     const imported = await mkdtemp(join(tmpdir(), 'performance-import-'));
     await mkdir(join(imported, 'cube'));
     await writeFile(
-      join(imported, 'cube', 'raw.json'),
+      join(imported, 'cube', 'metrics.json'),
       JSON.stringify({ ...result, entry: { ...result.entry, renderer: { id: 'imported', name: 'Imported' } } }),
     );
     await rename(imported, join(root, 'imported'));

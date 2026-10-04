@@ -1,9 +1,9 @@
 import { stat } from 'node:fs/promises';
-import { compareRuns, type RunResult } from 'performance-kit-schema';
+import { compareRuns, type ProcessedResult } from 'performance-kit-schema';
 import { scanResults } from './storage.js';
 type Axis = 'renderer' | 'scene';
 export interface ComparisonGroup {
-  runs: RunResult[];
+  runs: ProcessedResult[];
   selectorKey?: Axis;
   directory: boolean;
 }
@@ -42,9 +42,9 @@ export function compareGroups(
   const selectedAxis = a.selectorKey ?? b.selectorKey;
   if (!directoryPair && !selectedAxis) throw new Error('Choose a renderer or scene comparison axis');
   const heldAxis: Axis = selectedAxis === 'renderer' ? 'scene' : 'renderer';
-  const keyFor = (run: RunResult) => (directoryPair ? run.entry.id : run.entry[heldAxis].id);
+  const keyFor = (run: ProcessedResult) => (directoryPair ? run.entry.id : run.entry[heldAxis].id);
   const collect = (group: ComparisonGroup) => {
-    const grouped = new Map<string, RunResult[]>();
+    const grouped = new Map<string, ProcessedResult[]>();
     for (const run of group.runs) {
       const key = keyFor(run);
       grouped.set(key, [...(grouped.get(key) ?? []), run]);

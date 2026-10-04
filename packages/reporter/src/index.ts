@@ -75,6 +75,7 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
   let count = 0;
   let overflow = false;
   const explicit = new Map<number, FrameRecord>();
+  let startReceived: number | undefined;
   let runStart = 0;
   let runTimer: ReturnType<typeof setTimeout> | undefined;
   let watchdog: ReturnType<typeof setTimeout> | undefined;
@@ -114,6 +115,7 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
     const runEnd = now();
     if (overflow) error(new Error('Frame storage capacity exceeded; increase frameCapacity'));
     send('runEnd', {
+      ...(startReceived === undefined ? {} : { startReceived }),
       ...(runStart ? { runStart } : {}),
       runEnd,
       frames: records(),
@@ -193,8 +195,7 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
       throw new Error('Unexpected protocol envelope properties');
     const payload = message.payload as Record<string, unknown>;
     const keys: Record<string, string[]> = {
-      syncPing: ['t0'],
-      start: ['entryId', 'params', 'warmupMs'],
+      start: ['entryId', 'params'],
       capture: ['mimeType'],
       run: ['durationMs'],
       abort: ['reason'],
@@ -202,18 +203,13 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
     const allowed = keys[String(message.type)];
     if (!allowed || Object.keys(payload).some((key) => !allowed.includes(key)))
       throw new Error('Invalid protocol type or payload properties');
-    if (message.type === 'syncPing' && !(typeof payload.t0 === 'number' && Number.isFinite(payload.t0)))
-      throw new Error('syncPing requires t0');
     if (
       message.type === 'start' &&
       !(
         typeof payload.entryId === 'string' &&
         payload.params &&
         typeof payload.params === 'object' &&
-        !Array.isArray(payload.params) &&
-        typeof payload.warmupMs === 'number' &&
-        Number.isFinite(payload.warmupMs) &&
-        payload.warmupMs >= 0
+        !Array.isArray(payload.params)
       )
     )
       throw new Error('Invalid start payload');
@@ -238,17 +234,15 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
         receivedAt: { clock: 'reporter', t: t1 },
       });
       switch (value.type) {
-        case 'syncPing':
-          send('syncPong', { t0: value.payload.t0, t1, t2: now() });
-          break;
         case 'start':
           if (state !== 'idle') throw new Error('start received outside idle state');
+          startReceived = t1;
           state = 'setup';
           beginObservers();
           await startCallback?.(value.payload);
           break;
         case 'capture': {
-          if (state !== 'ready') throw new Error('capture requires ready state');
+          if (state !== 'ended') throw new Error('capture requires ended state');
           if (!captureCallback) throw new Error('No capture callback registered');
           const target = await captureCallback();
           let bytes: ArrayBuffer;
@@ -273,7 +267,7 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
         }
         case 'run':
           if (state !== 'ready') throw new Error('run requires ready state');
-          // Reserve enough additional slots for unthrottled rendering while keeping warmup records.
+          // Reserve additional slots for unthrottled rendering, including the first ready frames.
           if (!options.frameCapacity) {
             capacity = Math.max(capacity, count + Math.ceil(value.payload.durationMs * 2));
             const expanded = new Float64Array(capacity * 4);
@@ -281,7 +275,7 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
             data = expanded;
           }
           state = 'running';
-          runStart = now();
+          runStart ||= now();
           runTimer = setTimeout(() => finish(), value.payload.durationMs);
           break;
         case 'abort':
@@ -327,7 +321,8 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
         return;
       }
       state = 'ready';
-      send('ready', { at: now() });
+      runStart = now();
+      send('ready', { at: runStart });
     },
     frameBegin(frameOptions) {
       if (!enabled || disposed || (state !== 'ready' && state !== 'running')) return -1;

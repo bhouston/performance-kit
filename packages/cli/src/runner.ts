@@ -137,7 +137,7 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
         await browser?.close();
         await launch();
       }
-      const { entry, repetition } = schedule[i];
+      const { entry } = schedule[i];
       const runId = ulid();
       const page = await browser!.newPage();
       await page.setViewport({
@@ -157,15 +157,14 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
         url: url.href,
         entryId: entry.id,
         params: entry.params ?? {},
-        warmupMs: entry.warmupMs ?? suite.defaults?.warmupMs ?? 2000,
         durationMs: entry.durationMs,
         setupTimeoutMs: suite.defaults?.setupTimeoutMs ?? 60000,
-        capture: suite.defaults?.captureAfterWarmup ?? true,
+        capture: suite.defaults?.capture ?? suite.defaults?.captureAfterWarmup ?? true,
         width: options.width ?? 1920,
         height: options.height ?? 1080,
         isolation: options.isolation ?? 'iframe',
       };
-      console.log(`[${i + 1}/${schedule.length}] ${entry.id} repetition ${repetition}`);
+      console.log(`[${i + 1}/${schedule.length}] ${entry.id}`);
       let payload: Awaited<ReturnType<typeof harnessRun>>;
       try {
         if (options.isolation === 'page') {
@@ -191,14 +190,14 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
                   }
                 ).__performanceKitResult,
             ),
-            input.setupTimeoutMs * 3 + input.durationMs + input.warmupMs + 10000,
+            input.setupTimeoutMs * 3 + input.durationMs + 10000,
             'renderer page run',
           );
         } else {
           await page.goto(server.url + '/harness');
           payload = await deadline(
             page.evaluate(harnessRun, input),
-            input.setupTimeoutMs * 3 + input.durationMs + input.warmupMs + 10000,
+            input.setupTimeoutMs * 3 + input.durationMs + 10000,
             'iframe run',
           );
         }
@@ -208,7 +207,6 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
           harness: { iframeCreated: timestamp, startSent: timestamp, teardown: timestamp },
           reporter: { frames: [] },
           messages: [],
-          clockSync: { samples: [] },
           environment: {},
           status: /timeout/i.test((error as Error).message) ? 'timeout' : 'error',
           error: { message: (error as Error).message },
@@ -242,15 +240,12 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
         runId,
         suiteName: suite.name,
         entry: { id: entry.id, name: entry.name, renderer: entry.renderer, scene: entry.scene, url: entry.url },
-        repetition,
         config: {
           durationMs: entry.durationMs,
-          warmupMs: input.warmupMs,
           vsync: suite.defaults?.vsync ?? 'on',
         },
         environment,
         harness: payload.harness,
-        clockSync: payload.clockSync,
         messages: payload.messages,
         reporter: payload.reporter,
         status: payload.status,
