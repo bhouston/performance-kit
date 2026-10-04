@@ -74,6 +74,53 @@ it('writes flat AVIF/raw/processed files atomically and overwrites a workload', 
     await rm(root, { recursive: true, force: true });
   }
 });
+it('reprocesses legacy display metrics into numeric seconds arrays without changing raw data', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'performance-migrate-'));
+  try {
+    const measured: RunResult = {
+      ...structuredClone(result),
+      status: 'ok',
+      reporter: {
+        ready: 1010,
+        runStart: 1030,
+        runEnd: 1100,
+        frames: [
+          { cpuStart: 1010, cpuEnd: 1012 },
+          { cpuStart: 1030, cpuEnd: 1033 },
+          { cpuStart: 1047, cpuEnd: 1051 },
+          { cpuStart: 1064, cpuEnd: 1068 },
+        ],
+      },
+    };
+    const rawFile = await writeRun(root, measured);
+    const rawBefore = await readFile(rawFile, 'utf8');
+    const metricsFile = join(root, 'test/cube/metrics.json');
+    await writeFile(
+      metricsFile,
+      JSON.stringify({
+        schemaVersion: 1,
+        timeline: { intervals: [{ t: 791.2299, value: 137.1 }] },
+      }),
+    );
+    await processResults(root);
+    const metrics = JSON.parse(await readFile(metricsFile, 'utf8'));
+    expect(metrics.timeline.timeUnit).toBe('seconds');
+    expect(metrics.timeline.valueUnit).toBe('seconds');
+    expect(metrics.timeline.frameSeconds.length).toBeGreaterThan(1);
+    expect(metrics.timeline.frameSeconds.every((value: unknown) => typeof value === 'number')).toBe(true);
+    expect(metrics.timeline).not.toHaveProperty('intervals');
+    expect(metrics.timeline).not.toHaveProperty('cpu');
+    expect(metrics.timeline).not.toHaveProperty('gpu');
+    expect(metrics.timeline).not.toHaveProperty('watchdog');
+    expect(metrics.statistics.intervalCount).toBe(2);
+    expect(await readFile(rawFile, 'utf8')).toBe(rawBefore);
+    const before = (await stat(metricsFile)).mtimeMs;
+    await processResults(root);
+    expect((await stat(metricsFile)).mtimeMs).toBe(before);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 it('rejects traversal IDs', () => {
   for (const id of ['../escape', 'a/b', '..', '/tmp/x']) expect(() => safeEntryId(id)).toThrow();
 });
