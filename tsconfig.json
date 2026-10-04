@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "packages/schema"
+    },
+    {
+      "path": "packages/reporter"
+    },
+    {
+      "path": "packages/cli"
+    }
+  ]
+}
