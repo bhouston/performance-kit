@@ -94,7 +94,7 @@ export function processRun(run: RunResult): ProcessedResult {
     ...new Set([...intervalIndices, ...cpuIndices, ...gpuIndices, ...(visible.length ? [0, visible.length - 1] : [])]),
   ].toSorted((a, b) => a - b);
   const ticks = (run.reporter.watchdogTicks ?? []).filter(
-    (tick) => run.reporter.ready === undefined || tick <= run.reporter.ready,
+    (tick) => run.reporter.runEnd === undefined || tick <= run.reporter.runEnd,
   );
   const watchdogSeconds = ticks.map(local);
   const watchdogIndices = select(
@@ -107,7 +107,11 @@ export function processRun(run: RunResult): ProcessedResult {
     gpuSampleCount: full.gpu.length,
     setupMaxBlockSeconds: full.setupMaxBlockMs / 1000,
     setupBlockedSeconds: full.setupBlockedMs / 1000,
-    phaseDurations: {},
+    phaseDurations: Object.create(null) as Record<string, number>,
+    ...optional('averageFrameSeconds', durationSeconds(full.average)),
+    ...optional('averageFps', full.average ? 1000 / full.average : undefined),
+    ...optional('maxJitterSeconds', durationSeconds(full.maxJitter)),
+    ...optional('worstResponsivenessSeconds', durationSeconds(full.worstResponsiveness)),
     ...optional('median', durationSeconds(full.median)),
     ...optional('p95', durationSeconds(full.p95)),
     ...optional('p99', durationSeconds(full.p99)),
@@ -157,22 +161,20 @@ export function processRun(run: RunResult): ProcessedResult {
   for (const phase of full.phases)
     if (phase.durationMs !== undefined && phase.durationMs >= 0)
       statistics.phaseDurations[phase.phase] = (statistics.phaseDurations[phase.phase] ?? 0) + phase.durationMs;
-  for (const phase of ['load', 'process', 'compile'] as const)
-    if (statistics.phaseDurations[phase] !== undefined) statistics.phaseDurations[phase]! /= 1000;
-  const phases = full.phases
-    .flatMap((phase, index) => {
-      const raw = run.reporter.phases![index]!;
-      if (raw.start.clock !== 'reporter' || (raw.end && raw.end.clock !== 'reporter')) return [];
-      return [
-        {
-          phase: phase.phase,
-          start: local(phase.start),
-          ...(phase.end === undefined ? {} : { end: local(phase.end) }),
-          ...optional('durationSeconds', durationSeconds(phase.durationMs)),
-        },
-      ];
-    })
-    .slice(0, 128);
+
+  for (const name of Object.keys(statistics.phaseDurations)) statistics.phaseDurations[name]! /= 1000;
+  const phases = full.phases.flatMap((phase, index) => {
+    const raw = run.reporter.phases![index]!;
+    if (raw.start.clock !== 'reporter' || (raw.end && raw.end.clock !== 'reporter')) return [];
+    return [
+      {
+        phase: phase.phase,
+        start: local(phase.start),
+        ...(phase.end === undefined ? {} : { end: local(phase.end) }),
+        ...optional('durationSeconds', durationSeconds(phase.durationMs)),
+      },
+    ];
+  });
   const blocks = longest(full.blocks, 256).map((block) => ({
     ...block,
     sources: [...block.sources],
@@ -191,7 +193,7 @@ export function processRun(run: RunResult): ProcessedResult {
   }));
   const maxTime = Math.max(
     0,
-    ...[run.reporter.runEnd, run.reporter.ready, visible.at(-1)?.cpuStart, ticks.at(-1)]
+    ...[run.reporter.runEnd, run.reporter.renderStart, run.reporter.ready, visible.at(-1)?.cpuStart, ticks.at(-1)]
       .filter((value): value is number => value !== undefined)
       .map(local),
     ...phases.map((phase) => phase.end ?? phase.start),
@@ -215,6 +217,7 @@ export function processRun(run: RunResult): ProcessedResult {
     config: {
       durationSeconds: run.config.durationMs / 1000,
       vsync: run.config.vsync,
+      ...(run.config.phaseColors === undefined ? {} : { phaseColors: { ...run.config.phaseColors } }),
     },
     ...(run.environment === undefined ? {} : { environment: structuredClone(run.environment) }),
     status: run.status,
@@ -224,6 +227,12 @@ export function processRun(run: RunResult): ProcessedResult {
       timeUnit: 'seconds',
       valueUnit: 'seconds',
       maxTime,
+      ...optional(
+        'renderStart',
+        (run.reporter.renderStart ?? run.reporter.ready) === undefined
+          ? undefined
+          : local((run.reporter.renderStart ?? run.reporter.ready)!),
+      ),
       ...optional('ready', run.reporter.ready === undefined ? undefined : local(run.reporter.ready)),
       ...optional('runStart', run.reporter.runStart === undefined ? undefined : local(run.reporter.runStart)),
       ...optional('runEnd', run.reporter.runEnd === undefined ? undefined : local(run.reporter.runEnd)),
@@ -244,7 +253,7 @@ export function processRun(run: RunResult): ProcessedResult {
         Object.entries(run.harness).map(([key, value]) => [key, value / 1000]),
       ) as ProcessedResult['timing']['harness'],
       reporter: Object.fromEntries(
-        ['hello', 'startReceived', 'ready', 'runStart', 'runEnd'].flatMap((key) => {
+        ['hello', 'startReceived', 'ready', 'renderStart', 'runStart', 'runEnd'].flatMap((key) => {
           const value = run.reporter[key as keyof typeof run.reporter];
           return typeof value === 'number' ? [[key, value / 1000]] : [];
         }),

@@ -50,6 +50,7 @@ export function deriveRun(run: RunResult) {
     return value >= 0 ? [{ t: f.cpuStart, value }] : [];
   });
   const values = intervals.map((p) => p.value);
+  const average = values.length ? values.reduce((a, b) => a + b, 0) / values.length : undefined;
   const median = percentile(values, 0.5),
     p95 = percentile(values, 0.95),
     p99 = percentile(values, 0.99);
@@ -72,7 +73,7 @@ export function deriveRun(run: RunResult) {
     })),
     ...watchdog.filter((p) => p.value >= 50).map((p) => ({ start: p.t - p.value, end: p.t, sources: ['watchdog'] })),
   ]);
-  const ready = run.reporter.ready;
+  const ready = run.reporter.renderStart ?? run.reporter.ready;
   const setupStart = run.reporter.startReceived ?? run.reporter.hello;
   const setupMs = ready !== undefined && setupStart !== undefined ? ready - setupStart : undefined;
   const setupBlocks =
@@ -107,6 +108,9 @@ export function deriveRun(run: RunResult) {
     intervals,
     cpu,
     gpu,
+    average,
+    maxJitter: average === undefined ? undefined : values.reduce((max, v) => Math.max(max, Math.abs(v - average)), 0),
+    worstResponsiveness: watchdog.length ? watchdog.reduce((max, p) => Math.max(max, p.value), 0) : undefined,
     median,
     p95,
     p99,

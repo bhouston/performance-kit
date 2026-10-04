@@ -20,7 +20,8 @@ export type ClockSource = 'harness' | 'reporter' | 'gpu';
 export const GpuStampSchema = object({ clock: Type.Literal('gpu'), ns });
 export type GpuStamp = Static<typeof GpuStampSchema>;
 export const PhaseMarkSchema = object({
-  phase: Type.Union((['load', 'process', 'compile'] as const).map((v) => Type.Literal(v))),
+  id: Type.Optional(Type.Integer({ minimum: 0 })),
+  phase: Type.String({ minLength: 1 }),
   start: StampSchema,
   end: Type.Optional(StampSchema),
 });
@@ -110,11 +111,14 @@ export const EntrySchema = object({
 });
 export type Entry = Static<typeof EntrySchema>;
 export type SuiteEntry = Entry;
+export const PhaseColorsSchema = Type.Record(Type.String(), Type.String({ minLength: 1 }));
+export type PhaseColorConfig = Static<typeof PhaseColorsSchema>;
 export const SuiteSchema = Type.Object(
   {
     $schema: Type.Optional(Type.String()),
     schemaVersion: Type.Literal(1),
     name: Type.String(),
+    phaseColors: Type.Optional(PhaseColorsSchema),
     defaults: Type.Optional(
       object({
         warmupMs: Type.Optional(Type.Number({ minimum: 0, deprecated: true })),
@@ -169,7 +173,12 @@ export const RunResultSchema = Type.Object(
     }),
     repetition: Type.Optional(Type.Integer({ minimum: 1 })),
     networkProfile: Type.Optional(NetworkProfileSchema),
-    config: object({ durationMs: positive, warmupMs: Type.Optional(time), vsync }),
+    config: object({
+      durationMs: positive,
+      warmupMs: Type.Optional(time),
+      vsync,
+      phaseColors: Type.Optional(PhaseColorsSchema),
+    }),
     environment: Type.Optional(EnvironmentSchema),
     harness: object({
       iframeCreated: Type.Optional(time),
@@ -187,6 +196,7 @@ export const RunResultSchema = Type.Object(
       hello: Type.Optional(time),
       phases: Type.Optional(Type.Array(PhaseMarkSchema)),
       ready: Type.Optional(time),
+      renderStart: Type.Optional(time),
       warmupStart: Type.Optional(time),
       runStart: Type.Optional(time),
       runEnd: Type.Optional(time),
@@ -215,7 +225,7 @@ export const ProcessedResultSchema = Type.Object(
     networkProfile: Type.Optional(NetworkProfileSchema),
     downloads: Type.Optional(Type.Array(DownloadReportSchema)),
     entry: RunResultSchema.properties.entry,
-    config: object({ durationSeconds: positive, vsync }),
+    config: object({ durationSeconds: positive, vsync, phaseColors: Type.Optional(PhaseColorsSchema) }),
     environment: Type.Optional(EnvironmentSchema),
     status: RunResultSchema.properties.status,
     error: RunResultSchema.properties.error,
@@ -239,13 +249,18 @@ export const ProcessedResultSchema = Type.Object(
       cpuP95: optionalNumber,
       gpuMedian: optionalNumber,
       gpuP95: optionalNumber,
-      phaseDurations: object({ load: optionalNumber, process: optionalNumber, compile: optionalNumber }),
+      averageFrameSeconds: optionalNumber,
+      averageFps: optionalNumber,
+      maxJitterSeconds: optionalNumber,
+      worstResponsivenessSeconds: optionalNumber,
+      phaseDurations: Type.Record(Type.String(), displayNumber),
     }),
     timeline: object({
       timeUnit: Type.Literal('seconds'),
       valueUnit: Type.Literal('seconds'),
       maxTime: Type.Number({ minimum: 0 }),
       ready: optionalNumber,
+      renderStart: optionalNumber,
       runStart: optionalNumber,
       runEnd: optionalNumber,
       frameSeconds: Type.Array(displayNumber),
@@ -262,7 +277,6 @@ export const ProcessedResultSchema = Type.Object(
           end: optionalNumber,
           durationSeconds: optionalNumber,
         }),
-        { maxItems: 128 },
       ),
       blocks: Type.Array(
         object({
@@ -290,6 +304,7 @@ export const ProcessedResultSchema = Type.Object(
         hello: optionalNumber,
         startReceived: optionalNumber,
         ready: optionalNumber,
+        renderStart: optionalNumber,
         runStart: optionalNumber,
         runEnd: optionalNumber,
       }),
@@ -358,13 +373,14 @@ export const protocolSchemas = {
     }),
   ),
   phase: envelope('phase', PhaseMarkSchema),
-  ready: envelope('ready', object({ at: time })),
+  ready: envelope('ready', object({ at: time, renderStart: Type.Optional(time) })),
   captureResponse: envelope('capture', object({ at: time, bytes: Type.Unsafe<ArrayBuffer>({}) })),
   runEnd: envelope(
     'runEnd',
     object({
       startReceived: Type.Optional(time),
       runStart: Type.Optional(time),
+      renderStart: Type.Optional(time),
       runEnd: time,
       frames: Type.Array(FrameRecordSchema),
       blocks: Type.Array(BlockRecordSchema),

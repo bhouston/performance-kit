@@ -1,15 +1,26 @@
 import { bandwidthChartData, type ProcessedResult } from 'performance-kit-schema';
+import { useEffect, useRef, useState } from 'react';
 import { humanizeBytes } from 'humanize-units';
 const bytes = humanizeBytes;
 export function Bandwidth({ result, maxTime, minTime }: { result: ProcessedResult; maxTime: number; minTime: number }) {
+  const ref = useRef<SVGSVGElement>(null);
+  const [width, setWidth] = useState(1000);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const resize = () => setWidth(node.clientWidth);
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [result.downloads]);
   if (!result.downloads) return <p>Download measurement unavailable for this result.</p>;
   const resources = result.downloads.flatMap((report) => report.resources);
   const origin = result.downloads[0]?.timeOrigin ?? 0;
   const end = resources.reduce((max, r) => Math.max(max, r.responseEnd), 0);
   const data = bandwidthChartData(resources, Math.max(10, Math.ceil(end / 5000 / 10) * 10));
-  const width = 1000,
-    height = 220;
-  const x = (ms: number) => 36 + (((ms + origin) / 1000 - minTime) / (maxTime - minTime)) * (width - 50);
+  const height = 220;
+  const x = (ms: number) => 44 + (((ms + origin) / 1000 - minTime) / (maxTime - minTime)) * (width - 182);
   const y = (rate: number) => height - 28 - (rate / (data.peakBytesPerMs || 1)) * (height - 42);
   const paths = new Map<number, string>();
   for (const slice of data.slices) {
@@ -32,6 +43,7 @@ export function Bandwidth({ result, maxTime, minTime }: { result: ProcessedResul
       </p>
       <p>Estimated uniform byte arrival. Worker fetches are outside this frame’s timing timeline.</p>
       <svg
+        ref={ref}
         viewBox={`0 0 ${width} ${height}`}
         aria-label="Download bandwidth and request waiting times"
         style={{ width: '100%' }}
@@ -43,7 +55,7 @@ export function Bandwidth({ result, maxTime, minTime }: { result: ProcessedResul
         ))}
         <defs>
           <clipPath id={`network-${result.runId}`}>
-            <rect x="36" y="10" width={width - 50} height={height - 38} />
+            <rect x="44" y="10" width={Math.max(1, width - 182)} height={height - 38} />
           </clipPath>
         </defs>
         {Array.from({ length: Math.floor(maxTime) - Math.ceil(minTime) + 1 }, (_, index) => {
@@ -87,10 +99,10 @@ export function Bandwidth({ result, maxTime, minTime }: { result: ProcessedResul
               <title>{resources[lane.resourceIndex]!.url} · waiting</title>
             </line>
           ))}
-          {result.timeline.ready !== undefined && (
+          {(result.timeline.renderStart ?? result.timeline.ready) !== undefined && (
             <line
-              x1={x(result.timeline.ready * 1000 - origin)}
-              x2={x(result.timeline.ready * 1000 - origin)}
+              x1={x((result.timeline.renderStart ?? result.timeline.ready)! * 1000 - origin)}
+              x2={x((result.timeline.renderStart ?? result.timeline.ready)! * 1000 - origin)}
               y1="10"
               y2={height - 28}
               stroke="currentColor"

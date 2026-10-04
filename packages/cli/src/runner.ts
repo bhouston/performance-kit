@@ -257,6 +257,7 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
         ...(capture ? { capture: { file: 'screenshot.avif', at: capture.at } } : {}),
       } as RunResult;
       await page.close();
+      if (suite.phaseColors) Object.assign(result.config, { phaseColors: suite.phaseColors });
       await writeRun(out, result, capture ? Uint8Array.from(capture.bytes) : undefined);
       results.push(result);
       server.publish({ type: 'resultChanged', rendererId: entry.renderer.id, sceneId: entry.scene.id });

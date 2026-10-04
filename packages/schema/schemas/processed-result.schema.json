@@ -293,6 +293,15 @@
               "type": "string"
             }
           ]
+        },
+        "phaseColors": {
+          "type": "object",
+          "patternProperties": {
+            "^(.*)$": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
         }
       }
     },
@@ -497,17 +506,22 @@
         "gpuP95": {
           "type": "number"
         },
+        "averageFrameSeconds": {
+          "type": "number"
+        },
+        "averageFps": {
+          "type": "number"
+        },
+        "maxJitterSeconds": {
+          "type": "number"
+        },
+        "worstResponsivenessSeconds": {
+          "type": "number"
+        },
         "phaseDurations": {
-          "additionalProperties": false,
           "type": "object",
-          "properties": {
-            "load": {
-              "type": "number"
-            },
-            "process": {
-              "type": "number"
-            },
-            "compile": {
+          "patternProperties": {
+            "^(.*)$": {
               "type": "number"
             }
           }
@@ -545,6 +559,9 @@
           "type": "number"
         },
         "ready": {
+          "type": "number"
+        },
+        "renderStart": {
           "type": "number"
         },
         "runStart": {
@@ -614,7 +631,6 @@
           "type": "number"
         },
         "phases": {
-          "maxItems": 128,
           "type": "array",
           "items": {
             "additionalProperties": false,
@@ -622,20 +638,8 @@
             "required": ["phase", "start"],
             "properties": {
               "phase": {
-                "anyOf": [
-                  {
-                    "const": "load",
-                    "type": "string"
-                  },
-                  {
-                    "const": "process",
-                    "type": "string"
-                  },
-                  {
-                    "const": "compile",
-                    "type": "string"
-                  }
-                ]
+                "minLength": 1,
+                "type": "string"
               },
               "start": {
                 "type": "number"
@@ -730,6 +734,9 @@
               "type": "number"
             },
             "ready": {
+              "type": "number"
+            },
+            "renderStart": {
               "type": "number"
             },
             "runStart": {

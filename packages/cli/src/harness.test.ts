@@ -36,7 +36,20 @@ it('preserves inbound arrival order despite reversed validator delays and transf
   source.__performanceKitReceive = (message: { type: string; payload: Record<string, unknown> }) => {
     const at = performance.timeOrigin + performance.now();
     if (message.type === 'start') {
-      emit('phase', { phase: 'load', start: { clock: 'reporter', t: at }, end: { clock: 'reporter', t: at } });
+      emit('phase', { id: 0, phase: 'assets', start: { clock: 'reporter', t: at } });
+      emit('phase', { id: 1, phase: 'assets', start: { clock: 'reporter', t: at } });
+      emit('phase', {
+        id: 1,
+        phase: 'assets',
+        start: { clock: 'reporter', t: at },
+        end: { clock: 'reporter', t: at + 2 },
+      });
+      emit('phase', {
+        id: 0,
+        phase: 'assets',
+        start: { clock: 'reporter', t: at },
+        end: { clock: 'reporter', t: at + 3 },
+      });
       emit('ready', { at });
     }
     if (message.type === 'capture') emit('capture', { at, bytes: Uint8Array.of(137, 80, 78, 71).buffer });
@@ -85,6 +98,10 @@ it('preserves inbound arrival order despite reversed validator delays and transf
     expect(result).not.toHaveProperty('clockSync');
     expect(result.harness.captureSent).toBeGreaterThanOrEqual(result.harness.runEndObserved!);
     expect(result.reporter.frames).toHaveLength(1);
+    expect(result.reporter.phases).toHaveLength(2);
+    expect(result.reporter.phases?.map((p) => p.id)).toEqual([0, 1]);
+    expect(result.reporter.phases?.every((p) => p.end !== undefined)).toBe(true);
+    expect(result.reporter.renderStart).toBe(result.reporter.ready);
     const receipts = result.messages.filter(
       (message) => (message as { direction: string }).direction === 'toHarness',
     ) as { receivedAt: { t: number } }[];
