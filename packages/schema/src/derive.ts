@@ -44,6 +44,10 @@ export function mergeBlocks(blocks: readonly Block[]): Block[] {
 }
 export function deriveRun(run: RunResult) {
   const offsetMs = clockOffset(run.clockSync?.samples);
+  const samples = run.clockSync?.samples ?? [];
+  const startOffset = samples.length >= 15 ? clockOffset(samples.slice(0, 10)) : undefined;
+  const endOffset = samples.length >= 15 ? clockOffset(samples.slice(-5)) : undefined;
+  const driftMs = startOffset !== undefined && endOffset !== undefined ? endOffset - startOffset : undefined;
   const start = run.reporter.runStart;
   const end = run.reporter.runEnd;
   // Explicit measured bounds exclude warmup; minimal frame-only results use all supplied frames.
@@ -135,6 +139,7 @@ export function deriveRun(run: RunResult) {
     mad,
     fps: median ? 1000 / median : undefined,
     offsetMs,
+    driftMs,
     setupMs,
     reporterSetupMs,
     hiddenStartupMs: setupMs !== undefined && reporterSetupMs !== undefined ? setupMs - reporterSetupMs : undefined,

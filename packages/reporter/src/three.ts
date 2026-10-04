@@ -12,18 +12,17 @@ interface InstrumentableDevice extends GPUDeviceLike {
   createCommandEncoder(...args: unknown[]): InstrumentableEncoder;
   queue: { submit(buffers: unknown[]): void };
 }
-/** Measures a frame's first GPU pass. Async query mapping never blocks renderer submission. */
+/** Measures first-to-last GPU pass timestamps per encoder, merged by frame by the reporter. */
 export function attachThree(
   renderer: { backend?: { device?: GPUDeviceLike }; getContext?: () => unknown },
   onTiming: (timing: GpuTiming) => void = () => {},
 ) {
   if (renderer.backend?.device) {
     const device = renderer.backend.device as InstrumentableDevice;
-    const timing = attachWebGPU(device);
+    const timing = attachWebGPU(device, 8, 64);
     const createEncoder = device.createCommandEncoder;
     const submit = device.queue?.submit;
     let frame = -1;
-    let claimed = false;
     let disposed = false;
     const pending: number[] = [];
     const hookedCreate = function (this: InstrumentableDevice, ...args: unknown[]) {
@@ -33,10 +32,13 @@ export function attachThree(
       const finish = encoder.finish;
       let slot: number | undefined;
       const descriptorWithTiming = (descriptor: PassDescriptor = {}) => {
-        if (frame < 0 || claimed || descriptor.timestampWrites) return descriptor;
+        if (frame < 0 || descriptor.timestampWrites) return descriptor;
+        if (slot !== undefined) {
+          const timestampWrites = timing.append(slot);
+          return timestampWrites ? { ...descriptor, timestampWrites } : descriptor;
+        }
         const sample = timing.begin(frame);
         if (!sample) return descriptor;
-        claimed = true;
         slot = sample.slot;
         return { ...descriptor, timestampWrites: sample.timestampWrites };
       };
@@ -75,7 +77,6 @@ export function attachThree(
       timing,
       begin(index: number) {
         frame = index;
-        claimed = false;
       },
       end() {
         frame = -1;

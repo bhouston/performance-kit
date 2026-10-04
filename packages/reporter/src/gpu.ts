@@ -29,15 +29,16 @@ export interface GpuTiming {
   gpuEnd: string;
 }
 /** Caller resolves and submits its own encoder; map happens only after submission. */
-export function attachWebGPU(device: GPUDeviceLike, ringSize = 4) {
+export function attachWebGPU(device: GPUDeviceLike, ringSize = 4, maxPasses = 1) {
   const available = device.features.has('timestamp-query');
   const slots = available
     ? Array.from({ length: ringSize }, () => ({
-        query: device.createQuerySet({ type: 'timestamp', count: 2 }),
-        resolve: device.createBuffer({ size: 16, usage: 0x200 | 0x04 }),
-        read: device.createBuffer({ size: 16, usage: 0x01 | 0x08 }),
+        query: device.createQuerySet({ type: 'timestamp', count: maxPasses * 2 }),
+        resolve: device.createBuffer({ size: maxPasses * 16, usage: 0x200 | 0x04 }),
+        read: device.createBuffer({ size: maxPasses * 16, usage: 0x01 | 0x08 }),
         busy: false,
         frame: -1,
+        passes: 0,
       }))
     : [];
   let cursor = 0;
@@ -51,6 +52,7 @@ export function attachWebGPU(device: GPUDeviceLike, ringSize = 4) {
       if (slot.busy) return undefined;
       slot.busy = true;
       slot.frame = frame;
+      slot.passes = 1;
       return {
         slot: index,
         timestampWrites: {
@@ -60,11 +62,17 @@ export function attachWebGPU(device: GPUDeviceLike, ringSize = 4) {
         },
       };
     },
+    append(index: number) {
+      const slot = slots[index];
+      if (!slot || !slot.busy || slot.passes >= maxPasses) return undefined;
+      const offset = slot.passes++ * 2;
+      return { querySet: slot.query, beginningOfPassWriteIndex: offset, endOfPassWriteIndex: offset + 1 };
+    },
     resolve(encoder: Encoder, index: number) {
       const slot = slots[index];
       if (!slot || !slot.busy) return;
-      encoder.resolveQuerySet(slot.query, 0, 2, slot.resolve, 0);
-      encoder.copyBufferToBuffer(slot.resolve, 0, slot.read, 0, 16);
+      encoder.resolveQuerySet(slot.query, 0, slot.passes * 2, slot.resolve, 0);
+      encoder.copyBufferToBuffer(slot.resolve, 0, slot.read, 0, slot.passes * 16);
     },
     async read(index: number): Promise<GpuTiming | undefined> {
       const slot = slots[index];
@@ -75,7 +83,7 @@ export function attachWebGPU(device: GPUDeviceLike, ringSize = 4) {
         return {
           frame: slot.frame,
           gpuStart: values[0]!.toString(),
-          gpuEnd: values[1]!.toString(),
+          gpuEnd: values[slot.passes * 2 - 1]!.toString(),
         };
       } finally {
         slot.read.unmap();

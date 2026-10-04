@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "runSetId": "fixture-reference",
+  "createdAt": "2026-10-03T00:00:00.000Z",
+  "suite": {
+    "schemaVersion": 1,
+    "name": "Synthetic reference fixtures",
+    "defaults": {
+      "warmupMs": 200,
+      "repetitions": 3,
+      "vsync": "off"
+    },
+    "entries": [
+      {
+        "id": "three-base",
+        "name": "three-base / reference cube",
+        "labels": [
+          {
+            "key": "renderer",
+            "value": "three-base"
+          },
+          {
+            "key": "scene",
+            "value": "cube"
+          }
+        ],
+        "url": "http://127.0.0.1:4401/demo",
+        "durationMs": 1000
+      },
+      {
+        "id": "three-webgpu",
+        "name": "three-webgpu / reference cube",
+        "labels": [
+          {
+            "key": "renderer",
+            "value": "three-webgpu"
+          },
+          {
+            "key": "scene",
+            "value": "cube"
+          }
+        ],
+        "url": "http://127.0.0.1:4401/demo",
+        "durationMs": 1000
+      }
+    ]
+  },
+  "schedule": [
+    {
+      "entryId": "three-base",
+      "repetition": 1
+    },
+    {
+      "entryId": "three-webgpu",
+      "repetition": 1
+    },
+    {
+      "entryId": "three-base",
+      "repetition": 2
+    },
+    {
+      "entryId": "three-webgpu",
+      "repetition": 2
+    },
+    {
+      "entryId": "three-base",
+      "repetition": 3
+    },
+    {
+      "entryId": "three-webgpu",
+      "repetition": 3
+    }
+  ],
+  "seed": 42
+}

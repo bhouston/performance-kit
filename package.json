@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "build": "tsc -b && node scripts/emit-schemas.mjs && pnpm --filter @performance-kit/viewer build",
+    "build": "tsc -b && node scripts/emit-schemas.mjs && pnpm --filter @performance-kit/viewer build && node scripts/bundle-viewer.mjs",
     "tsc": "tsc -b && pnpm --filter @performance-kit/viewer tsc",
     "lint": "oxlint .",
     "format": "oxfmt .",

@@ -1,7 +1,7 @@
 import { mkdir, readFile, readdir, writeFile, cp, rename, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertRunResult, assertSuite } from 'performance-kit-schema';
+import { assertRunResult, assertSuite, assertManifest } from 'performance-kit-schema';
 import type { RunResult, Suite } from 'performance-kit-schema';
 export function safeEntryId(id: string): string {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(id) || id === '.' || id === '..') throw new Error(`Unsafe entry id: ${id}`);
@@ -16,6 +16,7 @@ export async function writeRun(root: string, result: RunResult, png?: Uint8Array
   const folder = join(root, 'runs', safeEntryId(result.entry.id));
   await mkdir(folder, { recursive: true });
   const file = join(folder, `rep-${result.repetition}.json`);
+  assertRunResult(result);
   if (png) {
     await writeFile(join(folder, `rep-${result.repetition}.png`), png, { flag: 'wx' });
     result.capture = {
@@ -46,8 +47,11 @@ export async function scanResults(root: string): Promise<ReportIndex> {
       const file = join(directory, entry.name),
         url = [relative, entry.name].filter(Boolean).join('/');
       if (entry.isDirectory()) await walk(file, url);
-      else if (entry.name === 'manifest.json') index.manifests.push(JSON.parse(await readFile(file, 'utf8')));
-      else if (entry.name.endsWith('.json') && /^rep-\d+\.json$/.test(entry.name)) {
+      else if (entry.name === 'manifest.json') {
+        const manifest: unknown = JSON.parse(await readFile(file, 'utf8'));
+        assertManifest(manifest);
+        index.manifests.push(manifest);
+      } else if (entry.name.endsWith('.json') && /^rep-\d+\.json$/.test(entry.name)) {
         const result = JSON.parse(await readFile(file, 'utf8')) as RunResult;
         assertRunResult(result);
         index.runs.push({

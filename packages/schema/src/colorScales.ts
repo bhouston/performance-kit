@@ -17,10 +17,6 @@ export const frameTimeColor = (ms: number) =>
     [33.3, [250, 204, 21]],
     [50, [239, 68, 68]],
   ]);
-export const responsivenessColor = (ms: number) =>
-  interpolate(ms, [
-    [0, [34, 197, 94]],
-    [50, [250, 204, 21]],
-    [100, [249, 115, 22]],
-    [300, [239, 68, 68]],
-  ]);
+/** RAIL/Long Tasks delay categories; graph segments interpolate their endpoint colors. */
+export const responsivenessColor = (ms: number): string =>
+  ms < 50 ? 'rgb(34,197,94)' : ms < 100 ? 'rgb(250,204,21)' : ms < 300 ? 'rgb(249,115,22)' : 'rgb(239,68,68)';

@@ -213,7 +213,7 @@ export const protocolSchemas = {
   runEnd: envelope(
     'runEnd',
     object({
-      runStart: time,
+      runStart: Type.Optional(time),
       runEnd: time,
       frames: Type.Array(FrameRecordSchema),
       blocks: Type.Array(BlockRecordSchema),

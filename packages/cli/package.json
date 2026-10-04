@@ -25,5 +25,9 @@
     "ulid": "^3.0.2",
     "yargs": "^18.0.0",
     "yargs-file-commands": "^2.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/yargs": "^17.0.35"
   }
 }

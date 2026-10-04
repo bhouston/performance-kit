@@ -4,3 +4,4 @@ coverage/
 *.tsbuildinfo
 site/
 results/
+packages/cli/viewer/

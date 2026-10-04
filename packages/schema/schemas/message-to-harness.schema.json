@@ -324,7 +324,7 @@
         "payload": {
           "additionalProperties": false,
           "type": "object",
-          "required": ["runStart", "runEnd", "frames", "blocks", "watchdogTicks"],
+          "required": ["runEnd", "frames", "blocks", "watchdogTicks"],
           "properties": {
             "runStart": {
               "minimum": 0,

@@ -101,19 +101,19 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
     Array.from({ length: count }, (_, index): FrameRecord => {
       const base = index * 4;
       return {
+        ...explicit.get(index),
         cpuStart: data[base]!,
         cpuEnd: data[base + 1]!,
         ...(Number.isNaN(data[base + 2]!) ? {} : { animationTime: data[base + 2]! }),
-        ...explicit.get(index),
       };
     });
-  const finish = () => {
-    if (state !== 'running') return;
+  const finish = (partial = false) => {
+    if (state === 'ended' || (!partial && state !== 'running')) return;
     state = 'ended';
     const runEnd = now();
     if (overflow) error(new Error('Frame storage capacity exceeded; increase frameCapacity'));
     send('runEnd', {
-      runStart,
+      ...(runStart ? { runStart } : {}),
       runEnd,
       frames: records(),
       blocks: blocks.slice(),
@@ -256,9 +256,10 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
           }
           state = 'running';
           runStart = now();
-          runTimer = setTimeout(finish, value.payload.durationMs);
+          runTimer = setTimeout(() => finish(), value.payload.durationMs);
           break;
         case 'abort':
+          finish(true);
           api.dispose();
           break;
       }
@@ -337,8 +338,14 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
           ...explicit.get(token),
           cpuStart: data[token * 4]!,
           cpuEnd: data[token * 4 + 1]!,
-          gpuStart: timing.gpuStart,
-          gpuEnd: timing.gpuEnd,
+          gpuStart:
+            explicit.get(token)?.gpuStart && BigInt(explicit.get(token)!.gpuStart!) < BigInt(timing.gpuStart)
+              ? explicit.get(token)!.gpuStart
+              : timing.gpuStart,
+          gpuEnd:
+            explicit.get(token)?.gpuEnd && BigInt(explicit.get(token)!.gpuEnd!) > BigInt(timing.gpuEnd)
+              ? explicit.get(token)!.gpuEnd
+              : timing.gpuEnd,
         });
     },
     environment(value) {
@@ -356,10 +363,12 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
       }
     },
     gpu: {
-      attach: attachWebGPU,
-      attachWebGL,
+      attach: (device, ringSize, maxPasses) =>
+        attachWebGPU(enabled ? device : { ...device, features: { has: () => false } }, ringSize, maxPasses),
+      attachWebGL: (gl, ringSize) =>
+        attachWebGL(enabled ? gl : ({ getExtension: () => null } as unknown as WebGL2RenderingContext), ringSize),
       attachThree: (renderer, callback) =>
-        attachThree(renderer, callback ?? ((value) => api.frameGpu(value.frame, value))),
+        attachThree(enabled ? renderer : {}, callback ?? ((value) => api.frameGpu(value.frame, value))),
     },
   };
   const bridgeReceiver = (value: unknown) => {

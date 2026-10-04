@@ -96,5 +96,8 @@ describe('read-time statistics', () => {
     expect(frameTimeColor(16.7)).toBe('rgb(34,197,94)');
     expect(frameTimeColor(100)).toBe('rgb(239,68,68)');
     expect(responsivenessColor(300)).toBe('rgb(239,68,68)');
+    expect(responsivenessColor(49)).toBe('rgb(34,197,94)');
+    expect(responsivenessColor(50)).toBe('rgb(250,204,21)');
+    expect(responsivenessColor(100)).toBe('rgb(249,115,22)');
   });
 });

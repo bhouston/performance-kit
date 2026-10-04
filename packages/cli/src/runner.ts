@@ -32,7 +32,30 @@ export interface RunOptions {
   executablePath?: string;
   failOnError?: boolean;
 }
+export async function deadline<T>(promise: Promise<T>, timeoutMs: number, phase: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Timeout during ${phase}`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 export async function runSuite(options: RunOptions): Promise<{ runset: string; results: RunResult[] }> {
+  for (const [name, value] of [
+    ['width', options.width],
+    ['height', options.height],
+    ['recycle', options.recycle],
+  ] as const) {
+    if (value !== undefined && (!Number.isInteger(value) || value < 1))
+      throw new Error(`${name} must be a positive integer`);
+  }
+  if (options.cooldownMs !== undefined && (!Number.isFinite(options.cooldownMs) || options.cooldownMs < 0))
+    throw new Error('cooldown-ms must be nonnegative');
   const suite = await loadSuite(options.suite);
   const schedule = scheduleSuite(suite, options);
   if (!schedule.length) throw new Error('No suite entries match the filters');
@@ -64,8 +87,6 @@ export async function runSuite(options: RunOptions): Promise<{ runset: string; r
       chromeFlags: flags,
     },
   };
-  assertManifest(manifest);
-  await writeFile(join(runset, 'manifest.json'), JSON.stringify(manifest, null, 2), { flag: 'wx' });
   const server = await startServer({ out, host: options.host, port: options.port });
   let rendererServer: Awaited<ReturnType<typeof startServer>> | undefined;
   let browser: Browser | undefined;
@@ -94,15 +115,24 @@ export async function runSuite(options: RunOptions): Promise<{ runset: string; r
           };
         };
         const adapter = await nav.gpu?.requestAdapter();
+        const info = adapter?.info as { vendor?: string; architecture?: string; description?: string } | undefined;
         const gl = document.createElement('canvas').getContext('webgl2');
         const debug = gl?.getExtension('WEBGL_debug_renderer_info');
         return {
-          adapter: adapter?.info ?? {},
+          adapter: { vendor: info?.vendor, architecture: info?.architecture, description: info?.description },
+          gpuTimestampsAvailable: adapter?.features?.has('timestamp-query') ?? false,
+          crossOriginIsolated: globalThis.crossOriginIsolated,
           renderer: debug ? gl?.getParameter(debug.UNMASKED_RENDERER_WEBGL) : gl?.getParameter(gl.RENDERER),
           available: !!adapter || !!gl,
         };
       });
       await probe.close();
+      manifest.environment = {
+        ...manifest.environment,
+        userAgent: await browser.userAgent(),
+        gpuTimestampsAvailable: gpu.gpuTimestampsAvailable,
+        crossOriginIsolated: gpu.crossOriginIsolated,
+      };
       if (!gpu.available) throw new Error('No GPU API available in Chrome');
       if (isSoftwareAdapter(gpu) && !options.allowSoftware)
         throw new Error(
@@ -110,6 +140,8 @@ export async function runSuite(options: RunOptions): Promise<{ runset: string; r
         );
     };
     await launch();
+    assertManifest(manifest);
+    await writeFile(join(runset, 'manifest.json'), JSON.stringify(manifest, null, 2), { flag: 'wx' });
     for (let i = 0; i < schedule.length; i++) {
       if (i > 0 && options.recycle && i % options.recycle === 0) {
         await browser?.close();
@@ -161,17 +193,25 @@ export async function runSuite(options: RunOptions): Promise<{ runset: string; r
             waitUntil: 'domcontentloaded',
             timeout: input.setupTimeoutMs,
           });
-          payload = await page.evaluate(
-            async () =>
-              await (
-                window as unknown as {
-                  __performanceKitResult: Promise<Awaited<ReturnType<typeof harnessRun>>>;
-                }
-              ).__performanceKitResult,
+          payload = await deadline(
+            page.evaluate(
+              async () =>
+                await (
+                  window as unknown as {
+                    __performanceKitResult: Promise<Awaited<ReturnType<typeof harnessRun>>>;
+                  }
+                ).__performanceKitResult,
+            ),
+            input.setupTimeoutMs * 3 + input.durationMs + input.warmupMs + 10000,
+            'renderer page run',
           );
         } else {
           await page.goto(server.url + '/harness');
-          payload = await page.evaluate(harnessRun, input);
+          payload = await deadline(
+            page.evaluate(harnessRun, input),
+            input.setupTimeoutMs * 3 + input.durationMs + input.warmupMs + 10000,
+            'iframe run',
+          );
         }
       } catch (error) {
         const timestamp = Date.now();
@@ -188,9 +228,13 @@ export async function runSuite(options: RunOptions): Promise<{ runset: string; r
       }
       const capture = payload.capture;
       const environment = {
-        userAgent: await browser!.userAgent(),
-        gpuTimestampsAvailable: false,
-        crossOriginIsolated: await page.evaluate(() => crossOriginIsolated).catch(() => false),
+        userAgent: manifest.environment.userAgent,
+        gpuTimestampsAvailable: manifest.environment.gpuTimestampsAvailable,
+        crossOriginIsolated: await deadline(
+          page.evaluate(() => crossOriginIsolated),
+          2000,
+          'isolation probe',
+        ).catch(() => false),
         devicePixelRatio: 1,
         chromeFlags: flags,
         host,

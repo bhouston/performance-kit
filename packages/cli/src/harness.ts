@@ -127,7 +127,14 @@ export async function harnessRun(input: {
       }
       if (message.type === 'syncPong') {
         samples.push({ ...message.payload, t3: receivedAt });
-        // Inbound harness receipt logs arrive with runEnd, including syncPing.
+        // Startup receipt logs arrive with runEnd; tail pings happen afterwards.
+        if (reporter.runEnd !== undefined)
+          messages.push({
+            type: 'syncPing',
+            direction: 'toReporter',
+            sentAt: { clock: 'harness', t: message.payload.t0 },
+            receivedAt: { clock: 'reporter', t: message.payload.t1 },
+          });
       }
       if (message.type === 'error') throw new Error(String(message.payload.message));
       const item = waiting.get(message.type)?.shift();
@@ -190,6 +197,8 @@ export async function harnessRun(input: {
     status = message.startsWith('Timeout') ? 'timeout' : 'error';
     error = { message };
     send('abort', { reason: message });
+    // Allow the reporter to flush raw partial frames and receipts before removal.
+    await new Promise((done) => setTimeout(done, 200));
   } finally {
     harness.teardown = now();
     iframe.remove();
