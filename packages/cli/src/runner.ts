@@ -85,7 +85,7 @@ export async function runSuite(options: RunOptions): Promise<{ runset: string; r
       devicePixelRatio: 1,
       host,
       chromeFlags: flags,
-    },
+    } as Environment,
   };
   const server = await startServer({ out, host: options.host, port: options.port });
   let rendererServer: Awaited<ReturnType<typeof startServer>> | undefined;
@@ -124,6 +124,7 @@ export async function runSuite(options: RunOptions): Promise<{ runset: string; r
           crossOriginIsolated: globalThis.crossOriginIsolated,
           renderer: debug ? gl?.getParameter(debug.UNMASKED_RENDERER_WEBGL) : gl?.getParameter(gl.RENDERER),
           available: !!adapter || !!gl,
+          api: adapter ? ('webgpu' as const) : ('webgl2' as const),
         };
       });
       await probe.close();
@@ -132,6 +133,8 @@ export async function runSuite(options: RunOptions): Promise<{ runset: string; r
         userAgent: await browser.userAgent(),
         gpuTimestampsAvailable: gpu.gpuTimestampsAvailable,
         crossOriginIsolated: gpu.crossOriginIsolated,
+        gpuAdapter: gpu.adapter,
+        api: gpu.api,
       };
       if (!gpu.available) throw new Error('No GPU API available in Chrome');
       if (isSoftwareAdapter(gpu) && !options.allowSoftware)
@@ -228,6 +231,7 @@ export async function runSuite(options: RunOptions): Promise<{ runset: string; r
       }
       const capture = payload.capture;
       const environment = {
+        ...manifest.environment,
         userAgent: manifest.environment.userAgent,
         gpuTimestampsAvailable: manifest.environment.gpuTimestampsAvailable,
         crossOriginIsolated: await deadline(

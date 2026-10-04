@@ -91,14 +91,7 @@ export async function harnessRun(input: {
       waiting.set(type, [...(waiting.get(type) ?? []), item]);
     });
   };
-  const listener = async (event: MessageEvent) => {
-    if (
-      event.source !== (pageMode ? window : iframe.contentWindow) ||
-      event.origin !== origin ||
-      event.data?.protocol !== 'performance-kit'
-    )
-      return;
-    const receivedAt = now();
+  const processMessage = async (event: MessageEvent, receivedAt: number) => {
     try {
       const bytes =
         event.data.type === 'capture' && event.data.payload?.bytes instanceof ArrayBuffer
@@ -107,7 +100,10 @@ export async function harnessRun(input: {
       await outer.validateEnvelope(event.data, bytes);
       const message = event.data as Message;
       if (message.runId !== input.runId) throw new Error('Protocol runId mismatch');
-      if (message.seq <= receivedSeq) throw new Error('Protocol sequence repeated or reordered');
+      if (message.seq !== receivedSeq + 1)
+        throw new Error(
+          `Protocol sequence dropped, repeated or reordered: ${message.type} seq=${message.seq} after seq=${receivedSeq}`,
+        );
       receivedSeq = message.seq;
       messages.push({
         type: message.type,
@@ -151,6 +147,19 @@ export async function harnessRun(input: {
         }
       waiting.clear();
     }
+  };
+  // Validation crosses an asynchronous Puppeteer binding. Serialize it so a
+  // later, faster validation cannot overtake an earlier protocol message.
+  let inboundQueue = Promise.resolve();
+  const listener = (event: MessageEvent) => {
+    if (
+      event.source !== (pageMode ? window : iframe.contentWindow) ||
+      event.origin !== origin ||
+      event.data?.protocol !== 'performance-kit'
+    )
+      return;
+    const receivedAt = now();
+    inboundQueue = inboundQueue.then(() => processMessage(event, receivedAt));
   };
   window.addEventListener('message', listener);
   if (pageMode)
@@ -200,6 +209,7 @@ export async function harnessRun(input: {
     // Allow the reporter to flush raw partial frames and receipts before removal.
     await new Promise((done) => setTimeout(done, 200));
   } finally {
+    await inboundQueue;
     harness.teardown = now();
     iframe.remove();
     window.removeEventListener('message', listener);

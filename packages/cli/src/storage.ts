@@ -10,6 +10,11 @@ export function safeEntryId(id: string): string {
 export async function loadSuite(file: string): Promise<Suite> {
   const value: unknown = JSON.parse(await readFile(file, 'utf8'));
   assertSuite(value);
+  for (const entry of value.entries) {
+    const url = new URL(entry.url, 'http://127.0.0.1');
+    if (!['http:', 'https:'].includes(url.protocol))
+      throw new Error(`Entry ${entry.id}: renderer URL must use HTTP or HTTPS (relative URLs are allowed)`);
+  }
   return value as Suite;
 }
 export async function writeRun(root: string, result: RunResult, png?: Uint8Array): Promise<string> {

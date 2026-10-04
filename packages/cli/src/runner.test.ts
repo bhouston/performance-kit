@@ -61,6 +61,7 @@ describe('runner lifecycle', () => {
       const manifest = JSON.parse(await readFile(join(result.runset, 'manifest.json'), 'utf8'));
       expect(manifest.environment.userAgent).toBe('pinned-test-chrome');
       expect(manifest.environment.gpuTimestampsAvailable).toBe(true);
+      expect(manifest.environment.gpuAdapter).toEqual({ description: 'Real GPU' });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
