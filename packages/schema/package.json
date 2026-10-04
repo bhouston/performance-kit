@@ -25,6 +25,11 @@
       "types": "./dist/colorScales.d.ts",
       "import": "./dist/colorScales.js",
       "default": "./dist/colorScales.js"
+    },
+    "./process": {
+      "types": "./dist/process.d.ts",
+      "import": "./dist/process.js",
+      "default": "./dist/process.js"
     }
   },
   "scripts": {

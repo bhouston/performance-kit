@@ -1,9 +1,9 @@
 import { createServer, type ServerResponse } from 'node:http';
 import { readFile, stat, mkdir, readdir } from 'node:fs/promises';
-import { watch, lstatSync, type FSWatcher } from 'node:fs';
+import { watch, lstatSync, readFileSync, type FSWatcher } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, extname, resolve, sep } from 'node:path';
-import { scanResults, viewerDirectory } from './storage.js';
+import { readReportIndex, processResults, processResult, viewerDirectory } from './storage.js';
 const types: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript',
@@ -34,6 +34,59 @@ export async function startServer(options: {
   let debounce: ReturnType<typeof setTimeout> | undefined;
   const changedPaths = new Set<string>();
   const knownDirectories = new Set<string>(['']);
+  const ownWrites = new Map<string, string>();
+  const recordWrite = (file: string, contents: string) => ownWrites.set(file, contents);
+  let processing = Promise.resolve();
+  let closing = false;
+  const flush = () => {
+    const paths = [...changedPaths];
+    changedPaths.clear();
+    processing = processing.then(async () => {
+      if (closing) return;
+      if (paths.includes('README.md')) publish({ type: 'readmeChanged' });
+      const broad =
+        paths.includes('') ||
+        paths.some((path) => path !== 'README.md' && path !== 'index.json' && path.split('/').length < 2);
+      const pairs = new Set(
+        paths
+          .filter((path) => path && path !== 'README.md' && path !== 'index.json')
+          .map((path) => path.split('/').slice(0, 2).join('/'))
+          .filter((path) => path.split('/').length === 2),
+      );
+      if (broad) {
+        try {
+          await processResults(options.out, recordWrite);
+          if (!closing) publish({ type: 'indexChanged' });
+        } catch (error) {
+          console.error('Unable to process changed results:', (error as Error).message);
+        }
+        return;
+      }
+      for (const pair of pairs) {
+        const [rendererId, sceneId] = pair.split('/');
+        const needsProcessing = paths.some(
+          (path) => path === pair || path === `${pair}/raw.json` || path === `${pair}/screenshot.avif`,
+        );
+        let ready = !needsProcessing;
+        if (needsProcessing)
+          for (let attempt = 0; attempt < 4; attempt++) {
+            try {
+              await processResult(options.out, rendererId, sceneId, recordWrite);
+              ready = true;
+              break;
+            } catch (error) {
+              if (attempt === 3) {
+                console.error('Unable to process changed result:', (error as Error).message);
+                break;
+              }
+              await new Promise((done) => setTimeout(done, 500));
+            }
+          }
+        if (ready && !closing) publish({ type: 'resultChanged', rendererId, sceneId });
+      }
+      if (paths.includes('index.json') && !closing) publish({ type: 'indexChanged' });
+    });
+  };
   const stopWatching = () => {
     clearTimeout(debounce);
     changedPaths.clear();
@@ -42,6 +95,7 @@ export async function startServer(options: {
   };
   if (liveReload) {
     await mkdir(options.out, { recursive: true });
+    await processResults(options.out, recordWrite);
     const findDirectories = async (directory: string, prefix: string): Promise<void> => {
       for (const entry of await readdir(directory, { withFileTypes: true })) {
         if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
@@ -55,12 +109,19 @@ export async function startServer(options: {
       const path = filename?.toString().split(sep).join('/') ?? '';
       // Atomic writers publish a final rename; temporary files never trigger report refreshes.
       if (path.split('/').some((part) => part.startsWith('.') || /(?:\.tmp|\.temp|\.swp|~)$/i.test(part))) return;
+      if (ownWrites.has(path)) {
+        try {
+          if (readFileSync(resolve(options.out, path), 'utf8') === ownWrites.get(path)) return;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT' && ownWrites.get(path) === '') return;
+        }
+      }
       let directory = knownDirectories.has(path);
       try {
         const info = lstatSync(resolve(options.out, path));
         if (info.isSymbolicLink()) return;
         if (info.isDirectory()) {
-          // An imported run set can appear in one atomic directory rename. Existing
+          // An imported renderer folder can appear in one atomic directory rename. Existing
           // directory metadata changes also accompany ignored temporary file writes.
           if (directory) return;
           knownDirectories.add(path);
@@ -72,12 +133,18 @@ export async function startServer(options: {
             if (known === path || known.startsWith(`${path}/`)) knownDirectories.delete(known);
         }
       }
-      if (!directory && path && !/\.(?:json|png|avif)$/i.test(path) && path !== 'README.md') return;
+      if (
+        !directory &&
+        path &&
+        !/(?:^|\/)(?:raw\.json|metrics\.json|screenshot\.avif)$/i.test(path) &&
+        path !== 'README.md' &&
+        path !== 'index.json'
+      )
+        return;
       changedPaths.add(path);
       clearTimeout(debounce);
       debounce = setTimeout(() => {
-        publish({ type: 'resultsChanged', paths: [...changedPaths].toSorted() });
-        changedPaths.clear();
+        flush();
       }, 500);
       debounce.unref();
     });
@@ -106,7 +173,7 @@ export async function startServer(options: {
           'X-Accel-Buffering': 'no',
         });
         res.write(': connected\n\n');
-        res.write(`data: ${JSON.stringify({ type: 'resultsChanged', paths: [] })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'indexChanged' })}\n\n`);
         const heartbeat = setInterval(() => res.write(': keepalive\n\n'), 15000);
         heartbeat.unref();
         clients.add(res);
@@ -120,7 +187,7 @@ export async function startServer(options: {
         res.setHeader('Content-Type', 'application/json');
         res.end(
           JSON.stringify({
-            ...(await scanResults(options.out)),
+            ...(await readReportIndex(options.out)),
             ...(liveReload || options.live === true ? { liveReload: true } : {}),
           }),
         );
@@ -133,12 +200,13 @@ export async function startServer(options: {
         );
         return;
       }
-      const isRaw = path.startsWith('/runsets/') || path === '/latest.json' || path === '/README.md';
+      const isResult =
+        /^\/[^/]+\/[^/]+\/(?:raw\.json|metrics\.json|screenshot\.avif)$/.test(path) || path === '/README.md';
       const reporter = path.startsWith('/reporter/');
       const root = resolve(
         reporter
           ? dirname(fileURLToPath(import.meta.resolve('performance-kit-reporter')))
-          : (options.rendererRoot ?? (isRaw ? options.out : (options.viewer ?? (await viewerDirectory())))),
+          : (options.rendererRoot ?? (isResult ? options.out : (options.viewer ?? (await viewerDirectory())))),
       );
       let file = resolve(
         root,
@@ -181,7 +249,9 @@ export async function startServer(options: {
     server,
     publish,
     async close() {
+      closing = true;
       stopWatching();
+      await processing;
       for (const client of clients) client.end();
       await new Promise<void>((done, reject) => server.close((error) => (error ? reject(error) : done())));
     },

@@ -42,7 +42,7 @@ const launch = vi.hoisted(() =>
 vi.mock('puppeteer', () => ({ default: { launch } }));
 import { runSuite, deadline } from './runner.js';
 describe('runner lifecycle', () => {
-  it('writes the manifest once after browser probing and survives process recycling', async () => {
+  it('persists flat processed workloads with actual browser metadata and process recycling', async () => {
     const root = await mkdtemp(join(tmpdir(), 'performance-runner-'));
     try {
       const suite = join(root, 'suite.json');
@@ -51,7 +51,7 @@ describe('runner lifecycle', () => {
         JSON.stringify({
           schemaVersion: 1,
           name: 'runner',
-          defaults: { repetitions: 2, captureAfterWarmup: false, warmupMs: 0 },
+          defaults: { repetitions: 1, captureAfterWarmup: false, warmupMs: 0 },
           entries: [
             {
               id: 'cube',
@@ -61,16 +61,24 @@ describe('runner lifecycle', () => {
               url: 'http://127.0.0.1/cube',
               durationMs: 100,
             },
+            {
+              id: 'sphere',
+              name: 'Sphere',
+              renderer: { id: 'test', name: 'Test Renderer' },
+              scene: { id: 'sphere', name: 'Sphere' },
+              url: '/sphere',
+              durationMs: 100,
+            },
           ],
         }),
       );
       const result = await runSuite({ suite, out: join(root, 'results'), port: 0, cooldownMs: 0, recycle: 1 });
       expect(result.results).toHaveLength(2);
       expect(launch).toHaveBeenCalledTimes(2);
-      const manifest = JSON.parse(await readFile(join(result.runset, 'manifest.json'), 'utf8'));
-      expect(manifest.environment.userAgent).toBe('pinned-test-chrome');
-      expect(manifest.environment.gpuTimestampsAvailable).toBe(true);
-      expect(manifest.environment.gpuAdapter).toEqual({ description: 'Real GPU' });
+      const raw = JSON.parse(await readFile(join(result.out, 'test/cube/raw.json'), 'utf8'));
+      expect(raw.environment.userAgent).toBe('pinned-test-chrome');
+      expect(raw.environment.gpuAdapter).toEqual({ description: 'Real GPU' });
+      expect(JSON.parse(await readFile(join(result.out, 'index.json'), 'utf8')).results).toHaveLength(2);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -107,7 +115,7 @@ describe('runner lifecycle', () => {
       const timeout = await runSuite({ suite, out: join(root, 'timeout'), port: 0, cooldownMs: 0 });
       expect(timeout.results[0].status).toBe('timeout');
       expect(timeout.results[0].reporter.frames).toEqual([]);
-      expect(JSON.parse(await readFile(join(timeout.runset, 'runs/cube/rep-1.json'), 'utf8')).status).toBe('timeout');
+      expect(JSON.parse(await readFile(join(timeout.out, 'test/cube/raw.json'), 'utf8')).status).toBe('timeout');
     } finally {
       scenario.environment = {};
       scenario.failure = undefined;

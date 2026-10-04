@@ -1,5 +1,6 @@
 import type { CommandModule } from 'yargs';
 import { startServer } from '../server.js';
+import { processResults } from '../storage.js';
 const command: CommandModule = {
   command: 'serve',
   describe: 'Serve a static performance report without watching results',
@@ -9,6 +10,7 @@ const command: CommandModule = {
       .option('host', { type: 'string', default: 'localhost' })
       .option('port', { type: 'number', default: 4400 }),
   handler: async (args) => {
+    await processResults(args.out as string);
     const server = await startServer({
       out: args.out as string,
       host: args.host as string,

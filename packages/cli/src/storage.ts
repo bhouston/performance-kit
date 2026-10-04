@@ -1,12 +1,23 @@
 import { mkdir, readFile, readdir, writeFile, cp, rename, stat, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertRunResult, assertSuite, assertManifest } from 'performance-kit-schema';
+import { randomUUID } from 'node:crypto';
+import { assertRunResult, assertSuite, assertProcessedResult, processRun } from 'performance-kit-schema';
 import { encodeCapture } from './capture.js';
-import type { RunResult, Suite } from 'performance-kit-schema';
+import type { RunResult, Suite, NamedEntity } from 'performance-kit-schema';
 export function safeEntryId(id: string): string {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(id) || id === '.' || id === '..') throw new Error(`Unsafe entry id: ${id}`);
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(id) || id === '.' || id === '..') throw new Error(`Unsafe id: ${id}`);
   return id;
+}
+export async function atomicWrite(file: string, data: string | Uint8Array): Promise<void> {
+  await mkdir(resolve(file, '..'), { recursive: true });
+  const temp = join(resolve(file, '..'), `.${file.split('/').at(-1)}.${randomUUID()}.tmp`);
+  try {
+    await writeFile(temp, data);
+    await rename(temp, file);
+  } finally {
+    await rm(temp, { force: true });
+  }
 }
 export async function loadSuite(file: string): Promise<Suite> {
   const value: unknown = JSON.parse(await readFile(file, 'utf8'));
@@ -16,66 +27,173 @@ export async function loadSuite(file: string): Promise<Suite> {
     if (!['http:', 'https:'].includes(url.protocol))
       throw new Error(`Entry ${entry.id}: renderer URL must use HTTP or HTTPS (relative URLs are allowed)`);
   }
-  return value as Suite;
+  return value;
 }
-export async function writeRun(root: string, result: RunResult, png?: Uint8Array): Promise<string> {
-  const folder = join(root, 'runs', safeEntryId(result.entry.id));
-  await mkdir(folder, { recursive: true });
-  const file = join(folder, `rep-${result.repetition}.json`);
-  assertRunResult(result);
-  if (png) {
-    const avif = await encodeCapture(png);
-    await writeFile(join(folder, `rep-${result.repetition}.avif`), avif, { flag: 'wx' });
-    result.capture = {
-      file: `rep-${result.repetition}.avif`,
-      at: result.capture?.at ?? result.harness.captureSent ?? result.harness.teardown,
-    };
-  }
-  assertRunResult(result);
-  await writeFile(file, `${JSON.stringify(result, null, 2)}\n`, { flag: 'wx' });
-  return file;
+export interface ResultReference {
+  renderer: NamedEntity;
+  scene: NamedEntity;
+  metrics: string;
+  screenshot?: string;
 }
 export interface ReportIndex {
-  runs: { result: RunResult; file: string; capture?: string }[];
-  manifests: unknown[];
+  schemaVersion: 1;
+  results: ResultReference[];
 }
-export async function scanResults(root: string): Promise<ReportIndex> {
-  const index: ReportIndex = { runs: [], manifests: [] };
-  async function walk(directory: string, relative: string): Promise<void> {
-    let entries;
-    try {
-      entries = await readdir(directory, { withFileTypes: true });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
-      throw error;
-    }
-    for (const entry of entries) {
-      if (entry.isSymbolicLink()) continue;
-      const file = join(directory, entry.name),
-        url = [relative, entry.name].filter(Boolean).join('/');
-      if (entry.isDirectory()) await walk(file, url);
-      else if (entry.name === 'manifest.json') {
-        const manifest: unknown = JSON.parse(await readFile(file, 'utf8'));
-        assertManifest(manifest);
-        index.manifests.push(manifest);
-      } else if (entry.name.endsWith('.json') && /^rep-\d+\.json$/.test(entry.name)) {
-        const result = JSON.parse(await readFile(file, 'utf8')) as RunResult;
-        assertRunResult(result);
-        index.runs.push({
-          result,
-          file: url,
-          ...(result.capture ? { capture: [relative, result.capture.file].join('/') } : {}),
-        });
-      }
-    }
+export interface RawRecord {
+  result: RunResult;
+  file: string;
+}
+async function directories(path: string) {
+  try {
+    return (await readdir(path, { withFileTypes: true })).filter(
+      (entry) => entry.isDirectory() && !entry.name.startsWith('.'),
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw error;
   }
-  await walk(resolve(root), '');
+}
+
+export async function scanResults(root: string): Promise<{ runs: RawRecord[] }> {
+  const runs: RawRecord[] = [];
+  for (const renderer of await directories(root))
+    for (const scene of await directories(join(root, renderer.name))) {
+      const file = `${renderer.name}/${scene.name}/raw.json`;
+      let result: unknown;
+      try {
+        result = JSON.parse(await readFile(join(root, file), 'utf8'));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+        throw error;
+      }
+      assertRunResult(result);
+      if (result.entry.renderer.id !== renderer.name || result.entry.scene.id !== scene.name)
+        throw new Error(`Result metadata does not match its folder: ${file}`);
+      runs.push({ result, file });
+    }
+  return { runs };
+}
+async function referenceFor(
+  root: string,
+  result: RunResult,
+  onWrite?: (file: string, contents: string) => void,
+): Promise<ResultReference> {
+  const prefix = `${safeEntryId(result.entry.renderer.id)}/${safeEntryId(result.entry.scene.id)}`;
+  let screenshot: string | undefined;
+  try {
+    if ((await stat(join(root, prefix, 'screenshot.avif'))).isFile()) screenshot = `${prefix}/screenshot.avif`;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  const metrics = processRun(result);
+  metrics.screenshot = !!screenshot;
+  assertProcessedResult(metrics);
+  const contents = JSON.stringify(metrics);
+  try {
+    if ((await readFile(join(root, prefix, 'metrics.json'), 'utf8')) === contents)
+      return {
+        renderer: result.entry.renderer,
+        scene: result.entry.scene,
+        metrics: `${prefix}/metrics.json`,
+        ...(screenshot ? { screenshot } : {}),
+      };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  onWrite?.(`${prefix}/metrics.json`, contents);
+  await atomicWrite(join(root, prefix, 'metrics.json'), contents);
+  return {
+    renderer: result.entry.renderer,
+    scene: result.entry.scene,
+    metrics: `${prefix}/metrics.json`,
+    ...(screenshot ? { screenshot } : {}),
+  };
+}
+async function saveIndex(root: string, index: ReportIndex, onWrite?: (file: string, contents: string) => void) {
+  index.results = index.results.toSorted((a, b) => a.metrics.localeCompare(b.metrics));
+  const contents = JSON.stringify(index);
+  try {
+    if ((await readFile(join(root, 'index.json'), 'utf8')) === contents) return;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  onWrite?.('index.json', contents);
+  await atomicWrite(join(root, 'index.json'), contents);
+}
+export async function processResults(
+  root: string,
+  onWrite?: (file: string, contents: string) => void,
+): Promise<ReportIndex> {
+  await mkdir(root, { recursive: true });
+  const previous = await readReportIndex(root);
+  const index: ReportIndex = { schemaVersion: 1, results: [] };
+  for (const { result } of (await scanResults(root)).runs)
+    index.results.push(await referenceFor(root, result, onWrite));
+  const current = new Set(index.results.map((item) => item.metrics));
+  for (const old of previous.results) {
+    if (current.has(old.metrics)) continue;
+    const file = `${safeEntryId(old.renderer.id)}/${safeEntryId(old.scene.id)}/metrics.json`;
+    onWrite?.(file, '');
+    await rm(join(root, file), { force: true });
+  }
+  await saveIndex(root, index, onWrite);
   return index;
 }
-export async function updateLatest(root: string, runset: string): Promise<void> {
-  const temp = join(root, `latest-${process.pid}.tmp`);
-  await writeFile(temp, `${JSON.stringify({ runset: `runsets/${runset}` }, null, 2)}\n`);
-  await rename(temp, join(root, 'latest.json'));
+export async function processResult(
+  root: string,
+  rendererId: string,
+  sceneId: string,
+  onWrite?: (file: string, contents: string) => void,
+): Promise<void> {
+  const prefix = `${safeEntryId(rendererId)}/${safeEntryId(sceneId)}`;
+  let result: unknown;
+  try {
+    result = JSON.parse(await readFile(join(root, prefix, 'raw.json'), 'utf8'));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  let reference: ResultReference | undefined;
+  if (result) {
+    assertRunResult(result);
+    if (result.entry.renderer.id !== rendererId || result.entry.scene.id !== sceneId)
+      throw new Error(`Result metadata does not match its folder: ${prefix}`);
+    reference = await referenceFor(root, result, onWrite);
+  } else {
+    onWrite?.(`${prefix}/metrics.json`, '');
+    await rm(join(root, prefix, 'metrics.json'), { force: true });
+  }
+  const index = await readReportIndex(root);
+  index.results = index.results.filter((item) => item.renderer.id !== rendererId || item.scene.id !== sceneId);
+  if (reference) index.results.push(reference);
+  await saveIndex(root, index, onWrite);
+}
+export async function readReportIndex(root: string): Promise<ReportIndex> {
+  try {
+    return JSON.parse(await readFile(join(root, 'index.json'), 'utf8')) as ReportIndex;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { schemaVersion: 1, results: [] };
+    throw error;
+  }
+}
+export async function writeRun(root: string, result: RunResult, png?: Uint8Array): Promise<string> {
+  assertRunResult(result);
+  const folder = join(root, safeEntryId(result.entry.renderer.id), safeEntryId(result.entry.scene.id));
+  await mkdir(folder, { recursive: true });
+  if (png) {
+    await atomicWrite(join(folder, 'screenshot.avif'), await encodeCapture(png));
+    result.capture = {
+      file: 'screenshot.avif',
+      at: result.capture?.at ?? result.harness.captureSent ?? result.harness.teardown,
+    };
+  } else {
+    await rm(join(folder, 'screenshot.avif'), { force: true });
+    delete result.capture;
+  }
+  assertRunResult(result);
+  const file = join(folder, 'raw.json');
+  await atomicWrite(file, `${JSON.stringify(result, null, 2)}\n`);
+  await processResult(root, result.entry.renderer.id, result.entry.scene.id);
+  return file;
 }
 export async function viewerDirectory(): Promise<string> {
   const packaged = fileURLToPath(new URL('../viewer', import.meta.url));
@@ -95,20 +213,28 @@ export async function buildReport(out: string, site: string): Promise<void> {
     destination = resolve(site);
   if (input === destination || destination.startsWith(input + '/') || input.startsWith(destination + '/'))
     throw new Error('Site and result folders must be separate');
+  const previous = await readReportIndex(destination);
+  const index = await processResults(input);
+  const current = new Set(index.results.map((item) => item.metrics));
+  for (const old of previous.results ?? []) {
+    if (current.has(old.metrics)) continue;
+    const folder = join(destination, safeEntryId(old.renderer.id), safeEntryId(old.scene.id));
+    for (const name of ['metrics.json', 'screenshot.avif', 'raw.json']) await rm(join(folder, name), { force: true });
+  }
   await mkdir(destination, { recursive: true });
   await cp(await viewerDirectory(), destination, { recursive: true });
-  const runsets = join(input, 'runsets');
+  for (const ref of index.results) {
+    await mkdir(join(destination, ref.renderer.id, ref.scene.id), { recursive: true });
+    await cp(join(input, ref.metrics), join(destination, ref.metrics));
+    if (ref.screenshot) await cp(join(input, ref.screenshot), join(destination, ref.screenshot));
+    else await rm(join(destination, ref.renderer.id, ref.scene.id, 'screenshot.avif'), { force: true });
+    await rm(join(destination, ref.renderer.id, ref.scene.id, 'raw.json'), { force: true });
+  }
   try {
-    await cp(runsets, join(destination, 'runsets'), { recursive: true });
+    await cp(join(input, 'README.md'), join(destination, 'README.md'));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    await rm(join(destination, 'README.md'), { force: true });
   }
-  const readme = join(destination, 'README.md');
-  try {
-    await cp(join(input, 'README.md'), readme);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    await rm(readme, { force: true });
-  }
-  await writeFile(join(destination, 'index.json'), JSON.stringify(await scanResults(input)));
+  await atomicWrite(join(destination, 'index.json'), JSON.stringify(index));
 }

@@ -3,7 +3,7 @@
   "name": "Cube and deliberate jank",
   "defaults": {
     "warmupMs": 300,
-    "repetitions": 2,
+    "repetitions": 1,
     "order": "interleaved",
     "vsync": "on"
   },

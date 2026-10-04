@@ -24,6 +24,7 @@
         },
         "repetitions": {
           "minimum": 1,
+          "maximum": 1,
           "type": "integer"
         },
         "order": {

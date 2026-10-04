@@ -63,6 +63,22 @@ describe('schema boundaries', () => {
     expect(() => assertSuite({ schemaVersion: 1, name: 'test', entries: [entry, entry] })).toThrow('duplicate');
     expect(() => assertSuite({ schemaVersion: 1, name: 'test', entries: [{ ...entry, id: '../escape' }] })).toThrow();
   });
+  it('permits only a single run per renderer and scene pair', () => {
+    const entry = {
+      id: 'cube',
+      name: 'Cube',
+      renderer: { id: 'three-base', name: 'Three Base' },
+      scene: { id: 'cube', name: 'Cube' },
+      url: '/cube',
+      durationMs: 100,
+    };
+    expect(() =>
+      assertSuite({ schemaVersion: 1, name: 'test', defaults: { repetitions: 1 }, entries: [entry] }),
+    ).not.toThrow();
+    expect(() =>
+      assertSuite({ schemaVersion: 1, name: 'test', defaults: { repetitions: 2 }, entries: [entry] }),
+    ).toThrow();
+  });
   it('validates directions and binary capture payloads', () => {
     const message = {
       protocol: 'performance-kit',
@@ -86,7 +102,7 @@ describe('schema boundaries', () => {
   });
 });
 
-import { validateSuite, validateManifest, type NamedEntity, type NamedEntityType, type SuiteEntry } from './index.js';
+import { validateSuite, type NamedEntity, type NamedEntityType, type SuiteEntry } from './index.js';
 describe('named renderer and scene references', () => {
   const renderer: NamedEntityType = { id: 'three-base', name: 'Three Base renderer' };
   const scene: NamedEntity = { id: 'cornell-metallic', name: 'Cornell metallic sphere' };
@@ -114,18 +130,9 @@ describe('named renderer and scene references', () => {
     reporter: { frames: [] },
     status: 'ok',
   };
-  it('accepts friendly names with spaces in suites, results, and manifest snapshots', () => {
+  it('accepts friendly names with spaces in suites and results', () => {
     expect(validateSuite(suite)).toBe(true);
     expect(validateRunResult(result)).toBe(true);
-    expect(
-      validateManifest({
-        schemaVersion: 1,
-        runSetId: 'set',
-        createdAt: '2026-10-04T00:00:00Z',
-        suite,
-        schedule: [{ entryId: entry.id, repetition: 1 }],
-      }),
-    ).toBe(true);
   });
   it.each(['.', '..', '../escape', 'three/new', 'three\\new', 'renderer with spaces', ''])(
     'rejects unsafe named entity ID %j',

@@ -4,7 +4,7 @@ import type { Suite } from 'performance-kit-schema';
 const suite: Suite = {
   schemaVersion: 1,
   name: 'test',
-  defaults: { repetitions: 2 },
+  defaults: { repetitions: 1 },
   entries: ['a', 'b', 'c'].map((id) => ({
     id,
     name: id,
@@ -16,20 +16,11 @@ const suite: Suite = {
 };
 describe('benchmark scheduling', () => {
   it('interleaves repetitions and preserves stable identifiers', () => {
-    expect(scheduleSuite(suite).map((run) => `${run.entry.id}${run.repetition}`)).toEqual([
-      'a1',
-      'b1',
-      'c1',
-      'a2',
-      'b2',
-      'c2',
-    ]);
+    expect(scheduleSuite(suite).map((run) => `${run.entry.id}${run.repetition}`)).toEqual(['a1', 'b1', 'c1']);
   });
   it('selects renderer and scene IDs before scheduling', () => {
-    expect(scheduleSuite(suite, { renderer: ['b'] }).map((run) => run.entry.id)).toEqual(['b', 'b']);
+    expect(scheduleSuite(suite, { renderer: ['b'] }).map((run) => run.entry.id)).toEqual(['b']);
     expect(scheduleSuite(suite, { renderer: ['a', 'c'], scene: ['cube'] }).map((run) => run.entry.id)).toEqual([
-      'a',
-      'c',
       'a',
       'c',
     ]);
@@ -39,11 +30,17 @@ describe('benchmark scheduling', () => {
     expect(() => scheduleSuite(suite, { repetitions: 0 })).toThrow();
     expect(() => scheduleSuite(suite, { seed: Infinity })).toThrow('finite');
   });
+  it('rejects repeats and duplicate flat workloads', () => {
+    expect(() => scheduleSuite(suite, { repetitions: 2 })).toThrow('one repetition');
+    expect(() =>
+      scheduleSuite({ ...suite, entries: [suite.entries[0], { ...suite.entries[0], id: 'duplicate' }] }),
+    ).toThrow('Duplicate');
+  });
   it('has reproducible seeded order', () => {
     expect(scheduleSuite(suite, { seed: 17 })).toEqual(scheduleSuite(suite, { seed: 17 }));
     expect(
-      scheduleSuite({ ...suite, defaults: { order: 'sequential', repetitions: 2 } }).map((run) => run.entry.id),
-    ).toEqual(['a', 'a', 'b', 'b', 'c', 'c']);
+      scheduleSuite({ ...suite, defaults: { order: 'sequential', repetitions: 1 } }).map((run) => run.entry.id),
+    ).toEqual(['a', 'b', 'c']);
   });
   it('rejects known software adapters and records vsync flags', () => {
     expect(isSoftwareAdapter({ description: 'ANGLE SwiftShader' })).toBe(true);

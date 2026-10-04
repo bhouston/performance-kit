@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { createRoot } from 'react-dom/client';
-import { deriveRun, summarizeRuns, type Point } from 'performance-kit-schema/derive';
 import { frameTimeColor, responsivenessColor } from 'performance-kit-schema/colorScales';
-import type { RunResult } from 'performance-kit-schema';
+import type { NamedEntity, ProcessedResult } from 'performance-kit-schema';
 import './style.css';
-const entryTitle = (run: RunResult) => `${run.entry.renderer.name} · ${run.entry.scene.name}`;
-type RecordItem = { result: RunResult; file: string; capture?: string };
+type Point = [seconds: number, milliseconds: number];
+type ResultReference = { renderer: NamedEntity; scene: NamedEntity; metrics: string; screenshot?: string };
+type RecordItem = ResultReference & { result: ProcessedResult };
+const entryTitle = (result: ProcessedResult) => `${result.entry.renderer.name} · ${result.entry.scene.name}`;
 const number = (n: number | undefined, unit = 'ms') =>
   n === undefined ? '—' : `${n.toFixed(unit === 's' ? 2 : 1)}${unit}`;
-function Timeline({ runs, kind = 'intervals' }: { runs: RunResult[]; kind?: 'intervals' | 'cpu' | 'gpu' }) {
+function Timeline({ result, kind = 'intervals' }: { result: ProcessedResult; kind?: 'intervals' | 'cpu' | 'gpu' }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const canvas = ref.current!;
@@ -22,31 +23,44 @@ function Timeline({ runs, kind = 'intervals' }: { runs: RunResult[]; kind?: 'int
       const ctx = canvas.getContext('2d')!;
       ctx.scale(dpr, dpr);
       ctx.clearRect(0, 0, width, height);
-      const all = runs.map((r) => ({ r, d: deriveRun(r) }));
-      const origins = all.map(({ r, d }) =>
-        d.offsetMs === undefined
-          ? (r.reporter.hello ??
-            r.reporter.phases?.[0]?.start.t ??
-            r.reporter.frames[0]?.cpuStart ??
-            r.reporter.ready ??
-            r.reporter.runStart ??
-            r.harness.startSent)
-          : r.harness.startSent + d.offsetMs,
+      const { timeline, statistics } = result;
+      const maxTime = Math.max(1, timeline.maxTime);
+      // Exact summaries are processed offline. Adjacent elapsed times reconstruct only plotted intervals.
+      const points: Point[] = timeline.frameIndices.flatMap((i) => {
+        const time = timeline.frameSeconds[i]!;
+        const value =
+          kind === 'intervals'
+            ? timeline.frameSeconds[i + 1] === undefined
+              ? undefined
+              : (timeline.frameSeconds[i + 1]! - time) * 1000
+            : kind === 'cpu'
+              ? timeline.cpuMs[i]
+              : timeline.gpuMs[i];
+        return value === undefined || value === null || (kind === 'intervals' && value <= 0)
+          ? []
+          : [[time, value] as Point];
+      });
+      const watchdog: Point[] = timeline.watchdogIndices.flatMap((i) =>
+        i === 0
+          ? []
+          : [
+              [
+                timeline.watchdogSeconds[i]!,
+                Math.max(
+                  0,
+                  (timeline.watchdogSeconds[i]! - timeline.watchdogSeconds[i - 1]!) * 1000 - timeline.watchdogPeriodMs,
+                ),
+              ] as Point,
+            ],
       );
-      const maxTime = Math.max(
-        1,
-        ...all.map(
-          ({ r }, i) => (r.reporter.runEnd ?? r.reporter.frames.at(-1)?.cpuStart ?? origins[i]!) - origins[i]!,
-        ),
-      );
-      const ceiling = all.reduce((maximum, { d }) => d[kind].reduce((n, p) => Math.max(n, p.value), maximum), 50);
+      const ceiling = points.reduce((maximum, p) => Math.max(maximum, p[1]), 50);
       const x = (t: number) => 36 + (t / maxTime) * (width - 50),
         y = (v: number) => height - 28 - (v / ceiling) * (height - 42);
-      const style = getComputedStyle(canvas);
-      const themeColor = (name: string) => style.getPropertyValue(name).trim();
+      const style = getComputedStyle(canvas),
+        color = (name: string) => style.getPropertyValue(name).trim();
       ctx.font = '10px system-ui';
-      ctx.strokeStyle = themeColor('--chart-grid');
-      ctx.fillStyle = themeColor('--muted-foreground');
+      ctx.strokeStyle = color('--chart-grid');
+      ctx.fillStyle = color('--muted-foreground');
       for (const v of [0, 16.7, 33.3, 50]) {
         ctx.beginPath();
         ctx.moveTo(36, y(v));
@@ -55,92 +69,73 @@ function Timeline({ runs, kind = 'intervals' }: { runs: RunResult[]; kind?: 'int
         ctx.fillText(`${Math.round(v)}`, 3, y(v) + 3);
       }
       ctx.fillText('ms', 3, height - 8);
-      ctx.fillText(all[0]?.d.offsetMs === undefined ? '0s · reporter-relative' : '0s', 36, height - 8);
-      ctx.fillText(`${(maxTime / 1000).toFixed(1)}s`, width - 43, height - 8);
-      all.forEach(({ r, d }, rep) => {
-        const origin = origins[rep]!;
-        if (rep === 0) {
-          for (const p of d.phases) {
-            ctx.fillStyle = (
-              {
-                load: themeColor('--chart-load'),
-                process: themeColor('--chart-process'),
-                compile: themeColor('--chart-compile'),
-              } as Record<string, string>
-            )[p.phase]!;
-            ctx.fillRect(
-              x(p.start - origin),
-              10,
-              Math.max(1, x((p.end ?? r.reporter.ready ?? p.start) - origin) - x(p.start - origin)),
-              height - 38,
-            );
-            ctx.fillStyle = themeColor('--muted-foreground');
-            ctx.fillText(p.phase, x(p.start - origin) + 3, 20);
-          }
-          if (r.reporter.ready !== undefined) {
-            ctx.setLineDash([3, 3]);
-            ctx.strokeStyle = themeColor('--chart-ready');
-            ctx.beginPath();
-            ctx.moveTo(x(r.reporter.ready - origin), 8);
-            ctx.lineTo(x(r.reporter.ready - origin), height - 28);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.fillStyle = themeColor('--chart-ready');
-            ctx.fillText('ready', x(r.reporter.ready - origin) + 4, 34);
-          }
-          if (d.median !== undefined && kind === 'intervals') {
-            const reference: [number, string][] =
-              Math.abs(y(d.median) - y(d.p95!)) < 12
-                ? [[d.median, 'median / p95']]
-                : [
-                    [d.median, 'median'],
-                    [d.p95!, 'p95'],
-                  ];
-            for (const [v, label] of reference) {
-              ctx.setLineDash([4, 5]);
-              ctx.strokeStyle = themeColor('--chart-reference');
-              ctx.beginPath();
-              const runStart = r.reporter.runStart ?? d.intervals[0]?.t ?? origin;
-              ctx.moveTo(x(runStart - origin), y(v));
-              ctx.lineTo(width - 14, y(v));
-              ctx.stroke();
-              ctx.setLineDash([]);
-              ctx.fillStyle = themeColor('--muted-foreground');
-              ctx.textAlign = 'right';
-              ctx.fillText(label, width - 16, y(v) - 3);
-              ctx.textAlign = 'left';
-            }
-          }
+      ctx.fillText(statistics.offsetMs === undefined ? '0s · reporter-relative' : '0s', 36, height - 8);
+      ctx.fillText(`${maxTime.toFixed(1)}s`, width - 43, height - 8);
+      for (const phase of timeline.phases) {
+        ctx.fillStyle = color(`--chart-${phase.phase}`);
+        ctx.fillRect(
+          x(phase.start),
+          10,
+          Math.max(1, x(phase.end ?? timeline.ready ?? phase.start) - x(phase.start)),
+          height - 38,
+        );
+        ctx.fillStyle = color('--muted-foreground');
+        ctx.fillText(phase.phase, x(phase.start) + 3, 20);
+      }
+      if (timeline.ready !== undefined) {
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = color('--chart-ready');
+        ctx.beginPath();
+        ctx.moveTo(x(timeline.ready), 8);
+        ctx.lineTo(x(timeline.ready), height - 28);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = color('--chart-ready');
+        ctx.fillText('ready', x(timeline.ready) + 4, 34);
+      }
+      if (statistics.median !== undefined && kind === 'intervals') {
+        const reference: [number, string][] =
+          Math.abs(y(statistics.median) - y(statistics.p95!)) < 12
+            ? [[statistics.median, 'median / p95']]
+            : [
+                [statistics.median, 'median'],
+                [statistics.p95!, 'p95'],
+              ];
+        for (const [value, label] of reference) {
+          ctx.setLineDash([4, 5]);
+          ctx.strokeStyle = color('--chart-reference');
+          ctx.beginPath();
+          ctx.moveTo(x(timeline.runStart ?? timeline.frameSeconds[0] ?? 0), y(value));
+          ctx.lineTo(width - 14, y(value));
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = color('--muted-foreground');
+          ctx.textAlign = 'right';
+          ctx.fillText(label, width - 16, y(value) - 3);
+          ctx.textAlign = 'left';
         }
-        const series = (points: Point[], color: (v: number) => string, setup = false) => {
-          ctx.globalAlpha = rep ? 0.5 : 1;
-          for (let i = 1; i < points.length; i++) {
-            const a = points[i - 1]!,
-              b = points[i]!;
-            const ax = x(a.t - origin),
-              bx = x(b.t - origin),
-              ay = setup ? height - 28 - (Math.min(a.value, 300) / 300) * (height - 42) : y(a.value),
-              by = setup ? height - 28 - (Math.min(b.value, 300) / 300) * (height - 42) : y(b.value);
-            const gradient = ctx.createLinearGradient(ax, ay, bx, by);
-            gradient.addColorStop(0, color(a.value));
-            gradient.addColorStop(1, color(b.value));
-            ctx.strokeStyle = gradient;
-            ctx.lineWidth = setup ? 1 : 1.5;
-            ctx.beginPath();
-            ctx.moveTo(ax, ay);
-            ctx.lineTo(bx, by);
-            ctx.stroke();
-          }
-          ctx.globalAlpha = 1;
-        };
-        series(d[kind], frameTimeColor);
-        if (rep === 0)
-          series(
-            d.watchdog.filter((p) => r.reporter.ready !== undefined && p.t <= r.reporter.ready),
-            responsivenessColor,
-            true,
-          );
-      });
+      }
+      const series = (samples: Point[], scale: (v: number) => string, setup = false) => {
+        for (let i = 1; i < samples.length; i++) {
+          const a = samples[i - 1]!,
+            b = samples[i]!;
+          const ax = x(a[0]),
+            bx = x(b[0]),
+            ay = setup ? height - 28 - (Math.min(a[1], 300) / 300) * (height - 42) : y(a[1]),
+            by = setup ? height - 28 - (Math.min(b[1], 300) / 300) * (height - 42) : y(b[1]);
+          const gradient = ctx.createLinearGradient(ax, ay, bx, by);
+          gradient.addColorStop(0, scale(a[1]));
+          gradient.addColorStop(1, scale(b[1]));
+          ctx.strokeStyle = gradient;
+          ctx.lineWidth = setup ? 1 : 1.5;
+          ctx.beginPath();
+          ctx.moveTo(ax, ay);
+          ctx.lineTo(bx, by);
+          ctx.stroke();
+        }
+      };
+      series(points, frameTimeColor);
+      series(watchdog, responsivenessColor, true);
     };
     draw();
     const observer = new ResizeObserver(draw);
@@ -151,7 +146,7 @@ function Timeline({ runs, kind = 'intervals' }: { runs: RunResult[]; kind?: 'int
       observer.disconnect();
       theme.removeEventListener('change', draw);
     };
-  }, [runs, kind]);
+  }, [result, kind]);
   return (
     <canvas
       ref={ref}
@@ -160,22 +155,18 @@ function Timeline({ runs, kind = 'intervals' }: { runs: RunResult[]; kind?: 'int
     />
   );
 }
-function Histogram({ run }: { run: RunResult }) {
-  const values = deriveRun(run).intervals.map((p) => p.value);
-  const bins = Array<number>(24).fill(0);
-  const max = values.reduce((n, v) => Math.max(n, v), 50);
-  values.forEach((v) => bins[Math.min(23, Math.floor((v / max) * 24))]++);
-  const peak = Math.max(1, ...bins);
+function Histogram({ result }: { result: ProcessedResult }) {
+  const { histogram } = result;
   return (
     <div>
       <div className="histogram">
-        {bins.map((v, i) => (
+        {histogram.bins.map((bin, i) => (
           <div
             key={i}
-            title={`${((i * max) / 24).toFixed(1)}ms: ${v} frames`}
+            title={`${bin.start.toFixed(1)}–${bin.end.toFixed(1)}ms: ${bin.count} frames`}
             style={{
-              height: `${Math.max(2, (v / peak) * 100)}%`,
-              background: frameTimeColor((i * max) / 24),
+              height: `${Math.max(2, (bin.count / Math.max(1, histogram.maxCount)) * 100)}%`,
+              background: frameTimeColor(bin.start),
             }}
           />
         ))}
@@ -183,46 +174,52 @@ function Histogram({ run }: { run: RunResult }) {
       <div className="axis">
         0ms{' '}
         <span>
-          {max.toFixed(1)}ms · {values.length} intervals
+          {number(histogram.bins.at(-1)?.end)} · {histogram.count} intervals
         </span>
       </div>
     </div>
   );
 }
-function Detail({ items }: { items: RecordItem[] }) {
-  const run = items[0]!.result,
-    d = deriveRun(run);
+function Detail({ result }: { result: ProcessedResult }) {
+  const { statistics, timeline } = result;
   const [kind, setKind] = useState<'intervals' | 'cpu' | 'gpu'>('intervals');
   return (
     <div className="detail">
       <div className="detail-heading">
         <h3>Frame timings</h3>
-        <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
+        <select aria-label="Timing series" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
           <option value="intervals">Frame intervals</option>
           <option value="cpu">CPU submit</option>
           <option value="gpu">GPU cost</option>
         </select>
       </div>
-      <Timeline runs={items.map((i) => i.result)} kind={kind} />
+      <Timeline result={result} kind={kind} />
       <div className="detail-grid">
         <section>
           <h3>Frame distribution</h3>
-          <Histogram run={run} />
+          <Histogram result={result} />
           <p>
-            p99 {number(d.p99)} · MAD {number(d.mad)}
+            p99 {number(statistics.p99)} · MAD {number(statistics.mad)}
+          </p>
+          <p>
+            CPU median {number(statistics.cpuMedian)} · p95 {number(statistics.cpuP95)}
+          </p>
+          <p>
+            GPU median {number(statistics.gpuMedian)} · p95 {number(statistics.gpuP95)}
           </p>
         </section>
         <section>
           <h3>Clock & startup</h3>
           <p>
-            Clock offset {number(d.offsetMs)} · drift {number(d.driftMs)} · hidden startup {number(d.hiddenStartupMs)}
+            Clock offset {number(statistics.offsetMs)} · drift {number(statistics.driftMs)} · hidden startup{' '}
+            {number(statistics.hiddenStartupMs)}
           </p>
           <p>
-            Unaccounted setup {number(d.unaccountedMs)} · blocked {number(d.setupBlockedMs)}
+            Unaccounted setup {number(statistics.unaccountedMs)} · blocked {number(statistics.setupBlockedMs)}
           </p>
           <table>
             <tbody>
-              {d.discrepancies.map((v, i) => (
+              {timeline.discrepancies.map((v, i) => (
                 <tr key={i}>
                   <td>{v.name}</td>
                   <td className={v.flagged ? 'warning' : ''}>{number(v.ms)}</td>
@@ -235,7 +232,7 @@ function Detail({ items }: { items: RecordItem[] }) {
           <h3>Phases</h3>
           <table>
             <tbody>
-              {d.phases.map((p, i) => (
+              {timeline.phases.map((p, i) => (
                 <tr key={i}>
                   <td>{p.phase}</td>
                   <td>{number(p.durationMs)}</td>
@@ -248,17 +245,16 @@ function Detail({ items }: { items: RecordItem[] }) {
           <h3>Main-thread blocks</h3>
           <table>
             <tbody>
-              {d.blocks.map((b, i) => (
+              {timeline.blocks.map((b, i) => (
                 <tr key={i}>
                   <td>
                     {b.sources.join(', ')}
-                    {(run.reporter.blocks ?? [])
-                      .filter((raw) => raw.start < b.end && raw.end > b.start)
-                      .flatMap((raw) => raw.scripts ?? [])
+                    {result.attribution
+                      .filter((script) => script.start < b.end && script.end > b.start)
                       .map((script, index) => (
                         <div className="script-attribution" key={index}>
                           <strong>{script.sourceFunctionName || script.invoker || 'anonymous script'}</strong> ·{' '}
-                          {number(script.end - script.start)}
+                          {number(script.durationMs)}
                           <span>
                             {script.sourceURL || 'source unavailable'}
                             {script.sourceCharPosition === undefined ? '' : ` @${script.sourceCharPosition}`}
@@ -272,34 +268,27 @@ function Detail({ items }: { items: RecordItem[] }) {
                         </div>
                       ))}
                   </td>
-                  <td>{number(b.end - b.start)}</td>
+                  <td>{number(b.durationMs)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </section>
       </div>
-      <div className="raw-links">
-        {items.map((i) => (
-          <a key={i.file} href={i.file} target="_blank" rel="noreferrer">
-            Raw JSON · rep {i.result.repetition ?? 1} ↗
-          </a>
-        ))}
-      </div>
       <p className="muted">
-        {run.environment?.gpuAdapter?.description ?? 'GPU unspecified'} ·{' '}
-        {run.environment?.host?.os ?? 'OS unspecified'} ·{' '}
-        {run.environment?.crossOriginIsolated ? 'isolated clocks' : 'clock isolation unavailable'}
+        {result.environment?.gpuAdapter?.description ?? 'GPU unspecified'} ·{' '}
+        {result.environment?.host?.os ?? 'OS unspecified'} ·{' '}
+        {result.environment?.crossOriginIsolated ? 'isolated clocks' : 'clock isolation unavailable'}
       </p>
     </div>
   );
 }
 function Card({
-  items,
+  item,
   revision = 0,
   captureEpoch = 0,
 }: {
-  items: RecordItem[];
+  item: RecordItem;
   revision?: number;
   captureEpoch?: number;
 }) {
@@ -313,19 +302,18 @@ function Card({
     return () => cancelAnimationFrame(frame);
   }, [revision]);
   const [open, setOpen] = useState(false),
-    r = items[0]!.result,
-    d = deriveRun(r),
-    summary = summarizeRuns(items.map((i) => i.result));
+    r = item.result,
+    d = r.statistics;
   return (
     <article className="card" ref={ref}>
       <div className="card-main">
         <div className="capture">
-          {items[0]!.capture ? (
+          {item.screenshot ? (
             <img
               src={
                 imageRevision
-                  ? `${items[0]!.capture}${items[0]!.capture.includes('?') ? '&' : '?'}updated=${imageRevision}`
-                  : items[0]!.capture
+                  ? `${item.screenshot}${item.screenshot.includes('?') ? '&' : '?'}updated=${imageRevision}`
+                  : item.screenshot
               }
               alt={`${entryTitle(r)} render capture`}
               loading="lazy"
@@ -346,7 +334,7 @@ function Card({
             <div className="stats">
               <div>
                 <small>Typical</small>
-                <strong>{number(summary.median)}</strong>
+                <strong>{number(d.median)}</strong>
               </div>
               <div title={`p99 ${number(d.p99)}`}>
                 <small>Tail · p95</small>
@@ -362,11 +350,11 @@ function Card({
               </div>
             </div>
           </div>
-          <Timeline runs={[r]} />
+          <Timeline result={r} />
         </div>
       </div>
       {(r.error || r.status !== 'ok') && <p className="error">{r.error?.message ?? r.status}</p>}
-      {open && <Detail items={items} />}
+      {open && <Detail result={r} />}
     </article>
   );
 }
@@ -383,89 +371,139 @@ function App() {
     [captureEpoch, setCaptureEpoch] = useState(0);
   useEffect(() => {
     let active = true;
-    let latestRequest = 0;
-    let everOpened = false;
-    const pendingPaths = new Set<string>();
+    let snapshotRequest = 0;
+    let seenSnapshotEvent = false;
+    const pairRequests = new Map<string, number>();
+    const pairApplied = new Map<string, number>();
     const retryTimers = new Set<ReturnType<typeof setTimeout>>();
-    const refresh = async (changedPaths: string[] = [], attempt = 0) => {
-      changedPaths.forEach((path) => pendingPaths.add(path));
-      const request = ++latestRequest;
+    const retry = (operation: () => void) => {
+      const timer = setTimeout(() => {
+        retryTimers.delete(timer);
+        if (active) operation();
+      }, 500);
+      retryTimers.add(timer);
+    };
+    const readIntroduction = async () => {
       try {
-        const [response, introduction] = await Promise.all([
-          fetch('./index.json', { cache: 'no-store' }),
-          fetch('./README.md', { cache: 'no-store' })
-            .then((introResponse) => (introResponse.ok ? introResponse.text() : ''))
-            .catch(() => ''),
-        ]);
+        const response = await fetch('./README.md', { cache: 'no-store' });
+        const text = response.ok ? await response.text() : '';
+        if (active) setPreamble(text);
+      } catch {
+        /* The introduction is optional. */
+      }
+    };
+    const refresh = async (flash = false, attempt = 0) => {
+      const request = ++snapshotRequest;
+      const startedPairs = new Map(pairRequests);
+      const newer = (key: string) => (pairApplied.get(key) ?? 0) > (startedPairs.get(key) ?? 0);
+      try {
+        const response = await fetch('./index.json', { cache: 'no-store' });
         if (!response.ok) throw new Error(`Unable to load results (${response.status})`);
-        const data = (await response.json()) as { runs: RecordItem[]; liveReload?: boolean };
-        if (active && request === latestRequest) {
-          setItems(data.runs ?? []);
-          setLive(data.liveReload === true);
-          if (pendingPaths.size) {
-            const changed = [...pendingPaths].map((path) => path.replace(/^\.\//, ''));
-            const affected = (data.runs ?? []).filter((item) =>
-              changed.some((path) =>
-                [item.file, item.capture].some(
-                  (file) =>
-                    file &&
-                    (path === '' ||
-                      path === file ||
-                      path.endsWith('/' + file) ||
-                      file.startsWith(path.replace(/\/+$/, '') + '/')),
-                ),
-              ),
+        const index = (await response.json()) as { schemaVersion: 1; results: ResultReference[]; liveReload?: boolean };
+        const loaded = await Promise.all(
+          (index.results ?? []).map(async (item) => {
+            const metrics = await fetch(item.metrics, { cache: 'no-store' });
+            if (!metrics.ok) throw new Error(`Unable to load metrics (${metrics.status})`);
+            return { ...item, result: (await metrics.json()) as ProcessedResult };
+          }),
+        );
+        if (active && request === snapshotRequest) {
+          setItems((previous) => {
+            const current = new Map(previous.map((item) => [item.metrics, item]));
+            const loadedKeys = new Set(loaded.map((item) => item.metrics));
+            const merged = loaded.flatMap((item) =>
+              newer(item.metrics) ? (current.has(item.metrics) ? [current.get(item.metrics)!] : []) : [item],
             );
+            return [...merged, ...previous.filter((item) => !loadedKeys.has(item.metrics) && newer(item.metrics))];
+          });
+          setLive(index.liveReload === true);
+          if (flash)
             setRevisions((previous) => ({
               ...previous,
-              ...Object.fromEntries(affected.map((item) => [item.file, performance.now()])),
+              ...Object.fromEntries(loaded.map((item) => [item.metrics, performance.now()])),
             }));
-          }
-          pendingPaths.clear();
-          setPreamble(introduction);
           setError('');
         }
-      } catch (e) {
-        if (active && request === latestRequest) {
-          if (attempt < 2) {
-            const timer = setTimeout(() => {
-              retryTimers.delete(timer);
-              if (active && request === latestRequest) void refresh([], attempt + 1);
-            }, 500);
-            retryTimers.add(timer);
-          } else setError(String(e));
+      } catch (failure) {
+        if (active && request === snapshotRequest) {
+          if (attempt < 2)
+            retry(() => {
+              if (snapshotRequest === request) void refresh(flash, attempt + 1);
+            });
+          else setError(String(failure));
+        }
+      }
+    };
+    const updatePair = async (rendererId: string, sceneId: string, attempt = 0, version?: number) => {
+      const directory = `${encodeURIComponent(rendererId)}/${encodeURIComponent(sceneId)}`;
+      const metrics = `${directory}/metrics.json`;
+      const request = version ?? (pairRequests.get(metrics) ?? 0) + 1;
+      pairRequests.set(metrics, request);
+      try {
+        const response = await fetch(metrics, { cache: 'no-store' });
+        if (!active || pairRequests.get(metrics) !== request) return;
+        if (response.status === 404) {
+          pairApplied.set(metrics, request);
+          setItems((previous) => previous.filter((item) => item.metrics !== metrics));
+          setError('');
+          return;
+        }
+        if (!response.ok) throw new Error(`Unable to load metrics (${response.status})`);
+        const result = (await response.json()) as ProcessedResult;
+        if (!active || pairRequests.get(metrics) !== request) return;
+        const item: RecordItem = {
+          renderer: result.entry.renderer,
+          scene: result.entry.scene,
+          metrics,
+          result,
+          ...(result.screenshot ? { screenshot: `${directory}/screenshot.avif` } : {}),
+        };
+        pairApplied.set(metrics, request);
+        setItems((previous) => {
+          const other = previous.filter((existing) => existing.metrics !== metrics);
+          return [...other, item];
+        });
+        setRevisions((previous) => ({ ...previous, [metrics]: performance.now() }));
+        setError('');
+      } catch (failure) {
+        if (active && pairRequests.get(metrics) === request) {
+          if (attempt < 2)
+            retry(() => {
+              if (pairRequests.get(metrics) === request) void updatePair(rendererId, sceneId, attempt + 1, request);
+            });
+          else setError(String(failure));
         }
       }
     };
     void refresh();
+    void readIntroduction();
     let events: EventSource | undefined;
     if (live) {
       events = new EventSource('./events');
-      events.addEventListener('open', () => {
-        setCaptureEpoch(performance.now());
-        void refresh(everOpened ? [''] : []);
-        everOpened = true;
-      });
+      events.addEventListener('open', () => setCaptureEpoch(performance.now()));
       const receive = (message: MessageEvent<string>) => {
-        let paths: string[] = [];
         try {
-          const event = JSON.parse(message.data) as { paths?: unknown; path?: string; file?: string };
-          paths = Array.isArray(event.paths)
-            ? event.paths.filter((path): path is string => typeof path === 'string')
-            : typeof event.file === 'string'
-              ? [event.file]
-              : typeof event.path === 'string'
-                ? [event.path]
-                : [];
+          const event = JSON.parse(message.data) as { type?: string; rendererId?: string; sceneId?: string };
+          if (
+            event.type === 'resultChanged' &&
+            typeof event.rendererId === 'string' &&
+            typeof event.sceneId === 'string'
+          )
+            void updatePair(event.rendererId, event.sceneId);
+          else if (event.type === 'readmeChanged') void readIntroduction();
+          else if (event.type === 'indexChanged') {
+            void refresh(seenSnapshotEvent);
+            void readIntroduction();
+            seenSnapshotEvent = true;
+          }
         } catch {
-          /* Events without data still request a fresh index. */
+          /* Ignore non-data SSE notifications. */
         }
-        void refresh(paths);
       };
       events.addEventListener('message', receive);
-      events.addEventListener('run', receive);
-      events.addEventListener('schedule', receive);
-      events.addEventListener('resultsChanged', receive);
+      events.addEventListener('resultChanged', receive);
+      events.addEventListener('readmeChanged', receive);
+      events.addEventListener('indexChanged', receive);
     }
     return () => {
       active = false;
@@ -479,32 +517,24 @@ function App() {
   const scenes = [
     ...new Map(items.map((item) => [item.result.entry.scene.id, item.result.entry.scene])).values(),
   ].toSorted((a, b) => a.name.localeCompare(b.name));
-  const groups = new Map<string, RecordItem[]>();
-  for (const i of items) {
-    const r = i.result;
-    if (
-      query &&
-      !`${entryTitle(r)} ${r.entry.id} ${r.entry.renderer.id} ${r.entry.scene.id}`
-        .toLowerCase()
-        .includes(query.toLowerCase())
-    )
-      continue;
-    if (renderer && r.entry.renderer.id !== renderer) continue;
-    if (scene && r.entry.scene.id !== scene) continue;
-    const key = `${r.suiteName ?? ''}/${r.entry.id}/${r.config.vsync}/${i.file.split('/runs/')[0]}`;
-    const group = groups.get(key) ?? [];
-    group.push(i);
-    groups.set(key, group);
-  }
-  const cards = [...groups.values()].toSorted((a, b) =>
-    sort === 'name'
-      ? entryTitle(a[0]!.result).localeCompare(entryTitle(b[0]!.result))
-      : sort === 'median'
-        ? (summarizeRuns(a.map((item) => item.result)).median ?? Infinity) -
-          (summarizeRuns(b.map((item) => item.result)).median ?? Infinity)
-        : (deriveRun(a[0]!.result)[sort as 'p95' | 'iqr' | 'setupMs'] ?? Infinity) -
-          (deriveRun(b[0]!.result)[sort as 'p95' | 'iqr' | 'setupMs'] ?? Infinity),
-  );
+  const cards = items
+    .filter((item) => {
+      const result = item.result;
+      if (
+        query &&
+        !`${entryTitle(result)} ${result.entry.renderer.id} ${result.entry.scene.id}`
+          .toLowerCase()
+          .includes(query.toLowerCase())
+      )
+        return false;
+      return (!renderer || result.entry.renderer.id === renderer) && (!scene || result.entry.scene.id === scene);
+    })
+    .toSorted((a, b) =>
+      sort === 'name'
+        ? entryTitle(a.result).localeCompare(entryTitle(b.result))
+        : (a.result.statistics[sort as 'median' | 'p95' | 'iqr' | 'setupMs'] ?? Infinity) -
+          (b.result.statistics[sort as 'median' | 'p95' | 'iqr' | 'setupMs'] ?? Infinity),
+    );
   return (
     <>
       <header className="header">
@@ -548,16 +578,8 @@ function App() {
                 </option>
               ))}
             </select>
-            <span className="result-count" title={`${items.length} raw runs`}>
-              {cards.length}/
-              {
-                new Set(
-                  items.map(
-                    (i) =>
-                      `${i.result.suiteName ?? ''}/${i.result.entry.id}/${i.result.config.vsync}/${i.file.split('/runs/')[0]}`,
-                  ),
-                ).size
-              }
+            <span className="result-count">
+              {cards.length}/{items.length}
             </span>
             <a
               className="repository-link"
@@ -596,13 +618,8 @@ function App() {
           </div>
         </div>
         {error && <p className="error">{error}</p>}
-        {cards.map((g, i) => (
-          <Card
-            key={g[0]!.file || i}
-            items={g}
-            captureEpoch={captureEpoch}
-            revision={Math.max(0, ...g.map((item) => revisions[item.file] ?? 0))}
-          />
+        {cards.map((item) => (
+          <Card key={item.metrics} item={item} captureEpoch={captureEpoch} revision={revisions[item.metrics] ?? 0} />
         ))}
         {!cards.length && !error && <div className="empty">Results will appear here when a benchmark completes.</div>}
       </main>

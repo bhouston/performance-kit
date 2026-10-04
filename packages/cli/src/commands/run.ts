@@ -2,7 +2,7 @@ import type { CommandModule } from 'yargs';
 import { runSuite } from '../runner.js';
 const command: CommandModule = {
   command: 'run',
-  describe: 'Benchmark a suite and append a raw run set',
+  describe: 'Benchmark a suite and write flat raw and processed results',
   builder: (yargs) =>
     yargs
       .option('suite', { type: 'string', demandOption: true })
@@ -19,7 +19,6 @@ const command: CommandModule = {
       })
       .option('renderer-port', { type: 'number', default: 4401 })
       .option('seed', { type: 'number' })
-      .option('repetitions', { type: 'number' })
       .option('cooldown-ms', { type: 'number', default: 2000 })
       .option('recycle', { type: 'number', describe: 'Recycle Chrome every N runs' })
       .option('width', { type: 'number', default: 1920 })
@@ -41,7 +40,6 @@ const command: CommandModule = {
       rendererRoot: args.rendererRoot as string | undefined,
       rendererPort: args.rendererPort as number,
       seed: args.seed as number | undefined,
-      repetitions: args.repetitions as number | undefined,
       cooldownMs: args.cooldownMs as number,
       recycle: args.recycle as number | undefined,
       width: args.width as number,
