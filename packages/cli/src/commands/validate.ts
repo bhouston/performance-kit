@@ -2,7 +2,7 @@ import type { CommandModule } from 'yargs';
 import { loadSuite, scanResults } from '../storage.js';
 const command: CommandModule = {
   command: 'validate',
-  describe: 'Validate a suite or every raw result',
+  describe: 'Validate a suite or every metrics result',
   builder: (yargs) =>
     yargs
       .option('suite', { type: 'string' })
