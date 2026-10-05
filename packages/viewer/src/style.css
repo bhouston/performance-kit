@@ -644,3 +644,36 @@ footer a:hover {
   position: relative;
   z-index: 2;
 }
+
+.convergence-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  margin-bottom: 6px;
+  border-radius: 12px;
+  background: #a855f722;
+  color: #a855f7;
+  font-size: 12px;
+  font-weight: 600;
+}
+.capture figure {
+  margin: 8px 0 0;
+  width: 100%;
+}
+.capture figcaption {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  text-align: center;
+}
+.convergence-summary {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  margin: 6px 0 0;
+}
+
+.convergence-capture {
+  flex-direction: column;
+  padding: 8px;
+}
+.convergence-capture img {
+  max-height: 120px;
+}

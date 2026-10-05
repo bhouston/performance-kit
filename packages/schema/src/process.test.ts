@@ -210,3 +210,29 @@ describe('extrema-preserving sampling', () => {
     for (const limit of [0, 3, 1001, NaN, 4.5]) expect(() => downsampleExtrema(points, limit)).toThrow('Point limit');
   });
 });
+
+it('reports sampled time-to-target from render start without extrapolating an unreached target', () => {
+  const run = raw(10);
+  run.reporter.runStart = 1;
+  run.reporter.runEnd = 5;
+  run.reporter.convergence = {
+    width: 1,
+    height: 1,
+    interval: 1,
+    targetPsnr: 30,
+    samples: [
+      { at: 0.5, frame: 0, mse: 0, psnr: null }, // Outside the measured window.
+      { at: 1.1, frame: 1, mse: 100, psnr: 28.13 },
+      { at: 2.1, frame: 12, mse: 10, psnr: 38.13 },
+      { at: 3.1, frame: 20, mse: 100, psnr: 28.13 }, // A later drop does not erase first observed arrival.
+    ],
+  };
+  const processed = processRun(run);
+  expect(processed.convergence?.timeToTarget).toBeCloseTo(1.1);
+  expect(processed.convergence?.framesToTarget).toBe(12);
+  assertProcessedResult(processed);
+  run.reporter.convergence.targetPsnr = 50;
+  expect(processRun(run).convergence?.timeToTarget).toBeUndefined();
+  run.reporter.convergence.samples.push({ at: 4, frame: 25, mse: 0, psnr: null });
+  expect(processRun(run).convergence?.timeToTarget).toBe(3);
+});

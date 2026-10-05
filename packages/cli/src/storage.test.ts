@@ -128,3 +128,44 @@ it('treats metrics as canonical even when stale raw files remain, and rejects fu
     await rm(root, { recursive: true, force: true });
   }
 });
+
+it('keeps convergence references and diffs portable and removes them when overwritten without a reference', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'convergence-assets-'));
+  try {
+    const png = await sharp({ create: { width: 2, height: 2, channels: 3, background: '#123456' } })
+      .png()
+      .toBuffer();
+    const run = structuredClone(result);
+    run.status = 'ok';
+    run.reporter.runStart = 0.1;
+    run.reporter.runEnd = 1;
+    run.reporter.convergence = {
+      width: 2,
+      height: 2,
+      interval: 0.25,
+      targetPsnr: 30,
+      samples: [{ at: 0.2, frame: 1, mse: 0, psnr: null }],
+    };
+    await writeRun(root, run, png, png);
+    const metrics = JSON.parse(await readFile(join(root, 'test/cube/metrics.json'), 'utf8'));
+    expect(metrics.convergence.timeToTarget).toBe(0.1);
+    expect(metrics.convergence.reference).toBe('reference.png');
+    expect((await readReportIndex(root)).results[0]).toMatchObject({
+      reference: 'test/cube/reference.png',
+      diff: 'test/cube/diff.png',
+    });
+    expect((await sharp(join(root, 'test/cube/diff.png')).stats()).channels.every((c) => c.max === 0)).toBe(true);
+    await buildReport(root, root + '-site');
+    expect(await readFile(join(root + '-site', 'test/cube/reference.png'))).toEqual(png);
+    expect((await sharp(join(root + '-site', 'test/cube/diff.png')).metadata()).width).toBe(2);
+    await writeRun(root, structuredClone(result));
+    await buildReport(root, root + '-site');
+    for (const name of ['reference.png', 'diff.png']) {
+      await expect(readFile(join(root, 'test/cube', name))).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(readFile(join(root + '-site', 'test/cube', name))).rejects.toMatchObject({ code: 'ENOENT' });
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(root + '-site', { recursive: true, force: true });
+  }
+});

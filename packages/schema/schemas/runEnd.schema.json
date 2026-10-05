@@ -450,6 +450,78 @@
               "type": "string"
             }
           }
+        },
+        "convergence": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": ["width", "height", "interval", "targetPsnr", "samples"],
+          "properties": {
+            "width": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "height": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "interval": {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            "targetPsnr": {
+              "minimum": 0,
+              "type": "number"
+            },
+            "samples": {
+              "type": "array",
+              "items": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": ["at", "frame", "mse", "psnr"],
+                "properties": {
+                  "at": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "frame": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "mse": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "psnr": {
+                    "anyOf": [
+                      {
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "reference": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "diff": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "timeToTarget": {
+              "minimum": 0,
+              "type": "number"
+            },
+            "framesToTarget": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
         }
       }
     }

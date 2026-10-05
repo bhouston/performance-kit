@@ -1,5 +1,6 @@
+import { loadReference } from './convergence.js';
 import { mkdir } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { cpus, platform, release } from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -10,7 +11,7 @@ import type { RunResult, Environment } from 'performance-kit-schema';
 import { configureNetwork, resolveNetworkProfile } from './network.js';
 import { harnessRun } from './harness.js';
 import { chromeFlags, isSoftwareAdapter, scheduleSuite } from './schedule.js';
-import { loadSuite, safeEntryId, writeRun } from './storage.js';
+import { loadSuite, safeEntryId, writeRun, atomicWrite } from './storage.js';
 import { startServer } from './server.js';
 export interface RunOptions {
   suite: string;
@@ -158,12 +159,24 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
       url.searchParams.set('performanceKitDurationMs', String(entry.durationMs));
       url.searchParams.set('performanceKitParams', JSON.stringify(entry.params ?? {}));
       url.searchParams.set('performanceKitOrigin', new URL(server.url).origin);
+      const reference = entry.reference ? await loadReference(entry.reference.image, options.suite) : undefined;
+      if (entry.reference && reference) {
+        const file = `${entry.renderer.id}/${entry.scene.id}/reference.png`;
+        await atomicWrite(join(out, file), reference);
+        url.searchParams.set(
+          'performanceKitReference',
+          JSON.stringify({
+            ...entry.reference,
+            image: new URL(file, server.url + '/').href,
+          }),
+        );
+      }
       const input = {
         runId,
         url: url.href,
         durationMs: entry.durationMs,
         initTimeoutMs: suite.defaults?.initTimeoutMs ?? 60000,
-        capture: suite.defaults?.capture ?? true,
+        capture: Boolean(reference) || (suite.defaults?.capture ?? true),
         width: options.width ?? 1920,
         height: options.height ?? 1080,
         isolation: options.isolation ?? 'iframe',
@@ -259,7 +272,7 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
       } as RunResult;
       await page.close();
       if (suite.phaseColors) Object.assign(result.config, { phaseColors: suite.phaseColors });
-      await writeRun(out, result, capture ? Uint8Array.from(capture.bytes) : undefined);
+      await writeRun(out, result, capture ? Uint8Array.from(capture.bytes) : undefined, reference);
       results.push(result);
       server.publish({ type: 'resultChanged', rendererId: entry.renderer.id, sceneId: entry.scene.id });
       if (i + 1 < schedule.length) await new Promise((done) => setTimeout(done, options.cooldownMs ?? 2000));

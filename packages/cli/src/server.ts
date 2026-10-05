@@ -137,7 +137,7 @@ export async function startServer(options: {
       if (
         !directory &&
         path &&
-        !/(?:^|\/)(?:raw\.json|metrics\.json|screenshot\.avif)$/i.test(path) &&
+        !/(?:^|\/)(?:raw\.json|metrics\.json|screenshot\.avif|reference\.png|diff\.png)$/i.test(path) &&
         path !== 'README.md' &&
         path !== 'index.json'
       )
@@ -162,6 +162,7 @@ export async function startServer(options: {
     res.setHeader('Cache-Control', 'no-store');
     try {
       const path = decodeURIComponent(new URL(req.url ?? '/', 'http://localhost').pathname);
+      if (path.endsWith('/reference.png')) res.setHeader('Access-Control-Allow-Origin', '*');
       if (path === '/events') {
         if (!eventsEnabled) {
           res.writeHead(404);
@@ -202,7 +203,8 @@ export async function startServer(options: {
         return;
       }
       const isResult =
-        /^\/[^/]+\/[^/]+\/(?:raw\.json|metrics\.json|screenshot\.avif)$/.test(path) || path === '/README.md';
+        /^\/[^/]+\/[^/]+\/(?:raw\.json|metrics\.json|screenshot\.avif|reference\.png|diff\.png)$/.test(path) ||
+        path === '/README.md';
       const reporter = path.startsWith('/reporter/');
       const root = resolve(
         reporter

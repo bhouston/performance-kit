@@ -165,6 +165,25 @@
             "patternProperties": {
               "^(.*)$": {}
             }
+          },
+          "reference": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": ["image"],
+            "properties": {
+              "image": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "intervalMs": {
+                "minimum": 16,
+                "type": "number"
+              },
+              "targetPsnr": {
+                "minimum": 0,
+                "type": "number"
+              }
+            }
           }
         }
       }

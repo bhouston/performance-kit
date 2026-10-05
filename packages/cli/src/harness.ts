@@ -102,6 +102,7 @@ export async function harnessRun(input: {
           `Protocol sequence dropped, repeated or reordered: ${message.type} seq=${message.seq} after seq=${receivedSeq}`,
         );
       receivedSeq = message.seq;
+      if (message.type === 'error') throw new Error(String(message.payload.message));
       messages.push({
         type: message.type,
         direction: 'toHarness',

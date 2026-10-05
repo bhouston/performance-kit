@@ -6,6 +6,8 @@ import type {
   PhaseMark,
   PhaseName,
 } from 'performance-kit-schema';
+import { createConvergenceSampler } from './convergence.js';
+import type { ReferenceConfig } from 'performance-kit-schema';
 import { observeDownloads } from './downloads.js';
 import { attachWebGPU, attachWebGL } from './gpu.js';
 import { attachThree } from './three.js';
@@ -17,12 +19,15 @@ export interface ReporterOptions {
   frameCapacity?: number;
   watchdogMs?: number;
   durationMs?: number;
+  reference?: ReferenceConfig;
 }
 export interface Reporter {
   readonly enabled: boolean;
   readonly running: boolean;
   readonly entryId: string;
   readonly params: Record<string, unknown>;
+  /** Attach the rendered canvas and load an optional reference before ready(). */
+  convergence(canvas: HTMLCanvasElement | OffscreenCanvas): Promise<void>;
   onCapture(
     callback: () =>
       | HTMLCanvasElement
@@ -63,6 +68,10 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
   const entryId = query.get('performanceKitEntryId') ?? '';
   const params: unknown = JSON.parse(query.get('performanceKitParams') ?? '{}');
   if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error('Invalid workload params');
+  const reference: ReferenceConfig | undefined =
+    options.reference ??
+    (query.has('performanceKitReference') ? JSON.parse(query.get('performanceKitReference')!) : undefined);
+  let convergence: Awaited<ReturnType<typeof createConvergenceSampler>> | undefined;
   const navigationStart = 0;
   const durationMs = options.durationMs ?? Number(query.get('performanceKitDurationMs') ?? 5000);
   if (!Number.isFinite(durationMs) || durationMs <= 0) throw new Error('Invalid run duration');
@@ -106,8 +115,10 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
     if (window.__performanceKitSend) window.__performanceKitSend(message);
     else window.parent.postMessage(message, origin, transfer);
   };
-  const error = (_value: unknown) => {
-    // Failed runs never publish a partial report; the harness deadline records failure.
+  const error = (value: unknown) => {
+    // Reference failures can explain setup/readback errors without publishing partial measurements.
+    if (reference) send('error', { message: value instanceof Error ? value.message : String(value) });
+    // Legacy runs retain their existing failure behavior.
     api.dispose();
   };
   const records = () =>
@@ -141,6 +152,7 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
       frames: records(),
       blocks: blocks.slice(),
       watchdogTicks: ticks.slice(),
+      ...(convergence ? { convergence: convergence.result() } : {}),
     });
   };
   const tick = () => {
@@ -273,6 +285,17 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
     },
     entryId,
     params: params as Record<string, unknown>,
+    async convergence(canvas) {
+      if (!enabled || !reference) return;
+      if (state !== 'init') throw new Error('Attach convergence canvas before ready()');
+      try {
+        convergence = await createConvergenceSampler(canvas, reference, now);
+      } catch (cause) {
+        error(cause);
+        throw cause;
+      }
+      captureCallback ??= () => canvas;
+    },
     onCapture(callback) {
       captureCallback = callback;
     },
@@ -302,6 +325,8 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
         error('ready requires init state');
         return;
       }
+      if (reference && !convergence)
+        throw new Error('Call await reporter.convergence(canvas) before ready() for reference runs');
       if (phases[0]?.phase === 'load' && !phases[0].end) api.phaseEnd(0);
       // Stop all initialization instrumentation before allocating the measured window.
       clearTimeout(watchdog);
@@ -317,6 +342,7 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
       }
       state = 'running';
       readyAt = runStart = now();
+      convergence?.start(runStart);
       runTimer = setTimeout(finish, durationMs);
     },
     frameBegin(frameOptions) {
@@ -333,7 +359,10 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
       return token;
     },
     frameEnd(token) {
-      if (token >= 0 && token < count && enabled && !disposed) data[token * 4 + 1] = now();
+      if (token >= 0 && token < count && enabled && !disposed) {
+        data[token * 4 + 1] = now();
+        if (state === 'running') convergence?.sample(data[token * 4 + 1]!, token + 1);
+      }
     },
     frame(record) {
       if (!enabled || disposed || state !== 'running') return;
@@ -347,6 +376,7 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
       data[base + 1] = record.cpuEnd;
       data[base + 2] = record.animationTime ?? NaN;
       explicit.set(index, record);
+      convergence?.sample(record.cpuEnd, index + 1);
     },
     frameGpu(token, timing) {
       if (token >= 0 && token < count)

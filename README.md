@@ -178,7 +178,7 @@ Use a dedicated GPU machine with a fixed power policy, driver, and Chrome versio
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Required checks are `pnpm build`, `pnpm tsc`, `pnpm lint`, `pnpm test --coverage`, and `pnpm audit --audit-level=high`. Dependency audit findings are reviewed in [AUDIT.md](AUDIT.md); coverage reports are uploaded with the CI artifacts.
 
-Changesets keeps the three public packages on a shared version. Add a changeset and run `pnpm version-packages`; a maintainer runs `pnpm release` with npm credentials after review. Publishing is not automatic. Suites and protocol envelopes use version 1; persisted metrics use version 2. Unknown future versions fail validation. Historical trends and additional browsers remain future extensions.
+Changesets keeps the three public packages on a shared version. Add a changeset and run `pnpm version-packages`; a maintainer runs `pnpm release` with npm credentials after review. Publishing is not automatic. Suites and protocol envelopes use version 1; persisted metrics use version 3. Unknown future versions fail validation. Historical trends and additional browsers remain future extensions.
 
 ## Author
 
@@ -245,3 +245,32 @@ never flush partial data. Screenshot traffic occurs only after the complete repo
 The chart ends at `runEnd`, excluding capture, teardown and unrelated later activity.
 Optional GPU query helpers add readback/polling work and should be excluded when
 investigating frame-rate spikes.
+
+## Compare convergence with an optional reference
+
+Add `reference` to a suite entry to compare progressive quality during the same window as frame timing:
+
+```json
+"reference": {
+  "image": "./references/cornell.png",
+  "intervalMs": 250,
+  "targetPsnr": 30
+}
+```
+
+Images may be paths relative to the suite file or HTTP(S) URLs. Register the rendered canvas before calling `ready()`:
+
+```ts
+await reporter.convergence(canvas);
+reporter.ready();
+```
+
+Without a reference, `convergence(canvas)` does nothing and performs no readbacks. Reference loading finishes during initialization. The reporter compares matching canvas and reference dimensions using encoded sRGB8 RGB, ignores alpha, and samples after rendered frames at an elapsed-time cadence (default 1,000 ms). Missed ticks are skipped. The first measured frame is sampled immediately; rendering itself is never called by the sampler. Resizing or mismatched dimensions fails rather than silently changing the comparison.
+
+Reports show a **Convergence** badge, the reference, a 4× absolute RGB difference, and a purple PSNR curve on the timing charts. **Time to PSNR** sorts by the first sampled threshold crossing, measured from `ready()`; its card names the configured target (default 30 dB). An unreached target displays **not reached**. This is an observation at the configured cadence, not an interpolated crossing or a claim of sustained convergence. Compare the same scene, reference, dimensions, cadence, target and initialization policy. FPS remains visible alongside the quality result.
+
+Exact matches store `mse: 0` and `psnr: null` for JSON-safe infinity. Charts plot exact matches at the top of the PSNR scale and summaries show `∞`. Samples retain reporter-offset seconds recorded after pixel readback/comparison and rendered frame counts. Final reference/difference PNG assets are portable and lossless; the diff uses the final capture before AVIF screenshot encoding. Reference runs always request a final screenshot even if the suite disables ordinary captures. The report does not display sampling-overhead figures.
+
+Run `pnpm test:convergence` after `pnpm build` for a browser fixture covering the reporter, protocol, CLI storage, portable assets and viewer; `PERFORMANCE_KIT_CHROME_PATH` can select a local Chrome executable.
+
+All timeline and bandwidth charts share the longest run’s time range and the same plot margins. A 10-second trace therefore occupies two thirds of the horizontal range when another run lasts 15 seconds. Average frame time, P95 and FPS labels sit outside the plot on its right.

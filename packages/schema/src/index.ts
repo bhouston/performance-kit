@@ -96,6 +96,32 @@ export const NetworkProfileSchema = object({
 });
 export type NetworkProfile = Static<typeof NetworkProfileSchema>;
 const vsync = Type.Union([Type.Literal('on'), Type.Literal('off')]);
+/** PSNR compares matching encoded RGB8 pixels; null PSNR means an exact match (infinity). */
+export const ReferenceSchema = object({
+  image: Type.String({ minLength: 1 }),
+  intervalMs: Type.Optional(Type.Number({ minimum: 16 })),
+  targetPsnr: Type.Optional(time),
+});
+export type ReferenceConfig = Static<typeof ReferenceSchema>;
+export const ConvergenceSampleSchema = object({
+  at: time,
+  frame: Type.Integer({ minimum: 0 }),
+  mse: time,
+  psnr: Type.Union([time, Type.Null()]),
+});
+export type ConvergenceSample = Static<typeof ConvergenceSampleSchema>;
+export const ConvergenceSchema = object({
+  width: Type.Integer({ minimum: 1 }),
+  height: Type.Integer({ minimum: 1 }),
+  interval: positive,
+  targetPsnr: time,
+  samples: Type.Array(ConvergenceSampleSchema),
+  reference: Type.Optional(Type.String({ minLength: 1 })),
+  diff: Type.Optional(Type.String({ minLength: 1 })),
+  timeToTarget: Type.Optional(time),
+  framesToTarget: Type.Optional(Type.Integer({ minimum: 0 })),
+});
+export type Convergence = Static<typeof ConvergenceSchema>;
 export const EntrySchema = object({
   id: pathSafeId,
   name: Type.String(),
@@ -104,6 +130,7 @@ export const EntrySchema = object({
   url: Type.String({ minLength: 1 }),
   durationMs: positive,
   params: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  reference: Type.Optional(ReferenceSchema),
 });
 export type Entry = Static<typeof EntrySchema>;
 export type SuiteEntry = Entry;
@@ -189,6 +216,7 @@ export const RunResultSchema = Type.Object(
       frames: Type.Array(FrameRecordSchema),
       blocks: Type.Optional(Type.Array(BlockRecordSchema)),
       watchdogTicks: Type.Optional(Type.Array(time)),
+      convergence: Type.Optional(ConvergenceSchema),
     }),
     capture: Type.Optional(object({ file: Type.String(), at: time })),
     status: Type.Union((['ok', 'timeout', 'error'] as const).map((v) => Type.Literal(v))),
@@ -212,6 +240,7 @@ export const ProcessedResultSchema = Type.Object(
     runId: Type.String({ minLength: 1 }),
     suiteName: Type.Optional(Type.String()),
     screenshot: Type.Boolean(),
+    convergence: Type.Optional(ConvergenceSchema),
     networkProfile: object({
       name: NetworkProfileSchema.properties.name,
       latency: time,
@@ -325,6 +354,7 @@ const envelope = <T extends string, P extends TSchema>(type: T, payload: P) =>
 export const protocolSchemas = {
   captureRequest: envelope('capture', object({ mimeType: Type.Literal('image/png') })),
   abort: envelope('abort', object({ reason: Type.String() })),
+  failure: envelope('error', object({ message: Type.String() })),
   captureResponse: envelope('capture', object({ at: time, bytes: Type.Unsafe<ArrayBuffer>({}) })),
   runEnd: envelope(
     'runEnd',
@@ -340,11 +370,16 @@ export const protocolSchemas = {
       ready: time,
       downloads: Type.Array(DownloadReportSchema),
       environment: Type.Partial(EnvironmentSchema),
+      convergence: Type.Optional(ConvergenceSchema),
     }),
   ),
 };
 export const MessageToReporterSchema = Type.Union([protocolSchemas.captureRequest, protocolSchemas.abort]);
-export const MessageToHarnessSchema = Type.Union([protocolSchemas.captureResponse, protocolSchemas.runEnd]);
+export const MessageToHarnessSchema = Type.Union([
+  protocolSchemas.captureResponse,
+  protocolSchemas.runEnd,
+  protocolSchemas.failure,
+]);
 export type MessageToReporter = Static<typeof MessageToReporterSchema>;
 export type MessageToHarness = Static<typeof MessageToHarnessSchema>;
 const ajv = new Ajv({ allErrors: true, strict: false });

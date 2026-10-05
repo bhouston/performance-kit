@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { assertRunResult, assertSuite, assertProcessedResult, processRun } from 'performance-kit-schema';
+import { referenceDiff } from './convergence.js';
 import { encodeCapture } from './capture.js';
 import type { RunResult, ProcessedResult, Suite, NamedEntity } from 'performance-kit-schema';
 export function safeEntryId(id: string): string {
@@ -34,6 +35,8 @@ export interface ResultReference {
   scene: NamedEntity;
   metrics: string;
   screenshot?: string;
+  reference?: string;
+  diff?: string;
 }
 export interface ReportIndex {
   schemaVersion: 1;
@@ -91,6 +94,8 @@ async function referenceFor(root: string, result: ProcessedResult): Promise<Resu
     scene: result.entry.scene,
     metrics: `${prefix}/metrics.json`,
     ...(screenshot ? { screenshot } : {}),
+    ...(result.convergence?.reference ? { reference: `${prefix}/reference.png` } : {}),
+    ...(result.convergence?.diff ? { diff: `${prefix}/diff.png` } : {}),
   };
 }
 async function saveIndex(root: string, index: ReportIndex, onWrite?: (file: string, contents: string) => void) {
@@ -136,7 +141,12 @@ export async function readReportIndex(root: string): Promise<ReportIndex> {
     throw error;
   }
 }
-export async function writeRun(root: string, result: RunResult, png?: Uint8Array): Promise<string> {
+export async function writeRun(
+  root: string,
+  result: RunResult,
+  png?: Uint8Array,
+  reference?: Uint8Array,
+): Promise<string> {
   assertRunResult(result);
   const folder = join(root, safeEntryId(result.entry.renderer.id), safeEntryId(result.entry.scene.id));
   await mkdir(folder, { recursive: true });
@@ -149,6 +159,23 @@ export async function writeRun(root: string, result: RunResult, png?: Uint8Array
   } else {
     await rm(join(folder, 'screenshot.avif'), { force: true });
     delete result.capture;
+  }
+  if (reference && result.reporter.convergence) {
+    await atomicWrite(join(folder, 'reference.png'), reference);
+    result.reporter.convergence.reference = 'reference.png';
+    if (png) {
+      await atomicWrite(join(folder, 'diff.png'), await referenceDiff(reference, png));
+      result.reporter.convergence.diff = 'diff.png';
+    } else {
+      await rm(join(folder, 'diff.png'), { force: true });
+      delete result.reporter.convergence.diff;
+    }
+  } else {
+    for (const name of ['reference.png', 'diff.png']) await rm(join(folder, name), { force: true });
+    if (result.reporter.convergence) {
+      delete result.reporter.convergence.reference;
+      delete result.reporter.convergence.diff;
+    }
   }
   assertRunResult(result);
   const file = join(folder, 'metrics.json');
@@ -182,7 +209,8 @@ export async function buildReport(out: string, site: string): Promise<void> {
   for (const old of previous.results ?? []) {
     if (current.has(old.metrics)) continue;
     const folder = join(destination, safeEntryId(old.renderer.id), safeEntryId(old.scene.id));
-    for (const name of ['metrics.json', 'screenshot.avif']) await rm(join(folder, name), { force: true });
+    for (const name of ['metrics.json', 'screenshot.avif', 'reference.png', 'diff.png'])
+      await rm(join(folder, name), { force: true });
   }
   await mkdir(destination, { recursive: true });
   await cp(await viewerDirectory(), destination, { recursive: true });
@@ -191,6 +219,13 @@ export async function buildReport(out: string, site: string): Promise<void> {
     await cp(join(input, ref.metrics), join(destination, ref.metrics));
     if (ref.screenshot) await cp(join(input, ref.screenshot), join(destination, ref.screenshot));
     else await rm(join(destination, ref.renderer.id, ref.scene.id, 'screenshot.avif'), { force: true });
+    for (const [file, name] of [
+      [ref.reference, 'reference.png'],
+      [ref.diff, 'diff.png'],
+    ] as const) {
+      if (file) await cp(join(input, file), join(destination, file));
+      else await rm(join(destination, ref.renderer.id, ref.scene.id, name), { force: true });
+    }
   }
   try {
     await cp(join(input, 'README.md'), join(destination, 'README.md'));

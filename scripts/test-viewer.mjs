@@ -33,7 +33,7 @@ try {
         ready: init / 1000,
         renderStart: init / 1000,
         runStart: init / 1000,
-        runEnd: i === 7 ? 4.6 : 5,
+        runEnd: i === 7 ? 10 : 15,
         frames: Array.from({ length: 80 }, (_, n) => ({
           cpuStart: (init + n * frame) / 1000,
           cpuEnd: (1 + init + n * frame) / 1000,
@@ -94,14 +94,14 @@ try {
   assert.equal((await ids())[0], '10-renderer-7-cube');
   await page.evaluate(() => window.scrollTo(0, 650));
   const scroll = await page.evaluate(() => window.scrollY);
-  await page.evaluate(() => document.querySelector('.card-link').click());
+  await page.evaluate(() => {
+    window.__chartLabels = [];
+    document.querySelector('.card-link').click();
+  });
   await page.waitForSelector('.detail');
   assert.match(page.url(), /result=10-renderer-7-cube/);
   assert.equal(await page.$$('.card').then((nodes) => nodes.length), 0);
   const detailURL = page.url();
-  await page.evaluate(() => {
-    window.__chartLabels = [];
-  });
   await page.setViewport({ width: 1390, height: 1000 });
   assert.equal(await page.$eval('.detail h2', (node) => node.textContent), 'Setup and frame timing · ms');
   assert.equal(await page.$$eval('.detail canvas.timeline', (nodes) => nodes.length), 1);
@@ -132,14 +132,16 @@ try {
   assert(labels.includes('1'));
   assert(labels.includes('2'));
   assert(labels.includes('ms'));
-  assert(!labels.includes('5')); // This run ends at 4.6s despite other cards extending to 5s.
+  assert(labels.includes('15')); // Shared scale stays at 15s even for the selected 10s run.
   for (const item of draws.filter(
     (label) => /^(average |P95 |init done )/.test(label.text) || (/^\d+$/.test(label.text) && label.x >= 44),
   )) {
     const right =
       item.x + (item.alignment === 'right' ? 0 : item.alignment === 'center' ? item.inkWidth / 2 : item.inkWidth);
     const left = right - item.inkWidth;
-    assert(left >= 44 - 1 && right <= item.width - 16 + 1, `Label outside plot: ${item.text}`);
+    if (/^(average |P95 )/.test(item.text))
+      assert(left > item.width - 160 && right <= item.width, `Statistic must be outside plot: ${item.text}`);
+    else assert(left >= 44 - 1 && right <= item.width - 160 + 1, `Axis label outside plot: ${item.text}`);
   }
   await page.screenshot({
     path: process.env.PERFORMANCE_KIT_SCREENSHOT_DIR
