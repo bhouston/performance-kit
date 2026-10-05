@@ -17,7 +17,8 @@
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "pnpm build && changeset publish",
-    "test:viewer": "node scripts/test-viewer.mjs"
+    "test:viewer": "node scripts/test-viewer.mjs",
+    "test:convergence": "node scripts/test-convergence.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.8",

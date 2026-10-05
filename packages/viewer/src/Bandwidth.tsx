@@ -1,5 +1,6 @@
 import { bandwidthChartData, type ProcessedResult } from 'performance-kit-schema';
 import { useEffect, useRef, useState } from 'react';
+import { chartLayout, timeTicks } from './report.js';
 import { humanizeBytes } from 'humanize-units';
 const bytes = humanizeBytes;
 export function Bandwidth({ result, maxTime }: { result: ProcessedResult; maxTime: number }) {
@@ -21,7 +22,7 @@ export function Bandwidth({ result, maxTime }: { result: ProcessedResult; maxTim
   const end = resources.reduce((max, r) => Math.max(max, r.responseEnd), 0);
   const data = bandwidthChartData(resources, Math.max(0.01, Math.ceil(end / 5000 / 0.01) * 0.01));
   const height = 220;
-  const x = (time: number) => 44 + (Math.min(time, maxTime) / maxTime) * (width - 60);
+  const { left, right, x } = chartLayout(width, maxTime);
   const y = (rate: number) => height - 28 - (rate / (data.peakBytesPerSecond || 1)) * (height - 42);
   const paths = new Map<number, string>();
   for (const slice of data.slices) {
@@ -54,22 +55,21 @@ export function Bandwidth({ result, maxTime }: { result: ProcessedResult; maxTim
         ))}
         <defs>
           <clipPath id={`network-${result.runId}`}>
-            <rect x="44" y="10" width={Math.max(1, width - 60)} height={height - 38} />
+            <rect x="44" y="10" width={right - left} height={height - 38} />
           </clipPath>
         </defs>
-        {Array.from({ length: Math.floor(maxTime) + 1 }, (_, index) => {
-          const second = index;
+        {timeTicks(maxTime, right - left).map((second) => {
           return (
-            <g key={second}>
+            <g key={Number(second.toFixed(2))}>
               <line x1={x(second)} x2={x(second)} y1="10" y2={height - 28} stroke="currentColor" opacity="0.12" />
               <text
-                textAnchor={second + 0.5 > maxTime ? 'end' : 'start'}
+                textAnchor={second === maxTime ? 'end' : 'start'}
                 x={x(second)}
                 y={height - 8}
                 fill="currentColor"
                 fontSize="10"
               >
-                {second}s
+                {Number(second.toFixed(2))}s
               </text>
             </g>
           );

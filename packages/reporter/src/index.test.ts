@@ -120,3 +120,24 @@ it.each(['failure', 'abort', 'dispose', 'overflow'])('never flushes partial meas
   expect(f.messages).toEqual([]);
   expect(f.reporter.frameBegin()).toBe(-1);
 });
+
+it('reference failures explain the cause without emitting partial measurements', () => {
+  const f = fixture({ reference: { image: '/reference.png' } });
+  f.reporter.fail(new Error('Convergence dimensions must match'));
+  expect(f.messages).toHaveLength(1);
+  expect(f.messages[0]).toMatchObject({ type: 'error', payload: { message: 'Convergence dimensions must match' } });
+  expect(f.messages[0]!.payload).not.toHaveProperty('frames');
+});
+it('convergence attachment remains a no-op without a harness or reference', async () => {
+  vi.stubGlobal(
+    'Image',
+    vi.fn(() => {
+      throw new Error('No reference load expected');
+    }),
+  );
+  const reporter = createReporter({ reference: { image: '/reference.png' } });
+  await reporter.convergence({} as HTMLCanvasElement);
+  const f = fixture();
+  await f.reporter.convergence({} as HTMLCanvasElement);
+  f.reporter.dispose();
+});

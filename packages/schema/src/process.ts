@@ -164,6 +164,24 @@ export function processRun(run: RunResult): ProcessedResult {
   const maxTime = run.reporter.runEnd ?? Math.max(0, ...frameTimes, ...watchdogTimes);
   return {
     schemaVersion: 3,
+    ...(run.reporter.convergence
+      ? {
+          convergence: {
+            ...structuredClone(run.reporter.convergence),
+            ...(() => {
+              const convergence = run.reporter.convergence!;
+              const start = run.reporter.runStart ?? run.reporter.ready ?? 0;
+              const reached = convergence.samples.find(
+                (sample) =>
+                  sample.at >= start &&
+                  (run.reporter.runEnd === undefined || sample.at <= run.reporter.runEnd) &&
+                  (sample.psnr === null || sample.psnr >= convergence.targetPsnr),
+              );
+              return reached ? { timeToTarget: reached.at - start, framesToTarget: reached.frame } : {};
+            })(),
+          },
+        }
+      : {}),
     runId: run.runId,
     screenshot: run.capture !== undefined,
     networkProfile: {

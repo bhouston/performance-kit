@@ -14,6 +14,8 @@ import {
   phaseColor,
   phaseEnd,
   chartScale,
+  chartLayout,
+  timeTicks,
   resultId,
   readRoute,
   type SortKey,
@@ -22,7 +24,14 @@ import {
 import { percentile } from 'performance-kit-schema';
 import './style.css';
 type Point = [seconds: number, milliseconds: number];
-type ResultReference = { renderer: NamedEntity; scene: NamedEntity; metrics: string; screenshot?: string };
+type ResultReference = {
+  renderer: NamedEntity;
+  scene: NamedEntity;
+  metrics: string;
+  screenshot?: string;
+  reference?: string;
+  diff?: string;
+};
 type RecordItem = ResultReference & { result: ProcessedResult };
 const entryTitle = (result: ProcessedResult) => `${result.entry.renderer.name} · ${result.entry.scene.name}`;
 const duration = (seconds: number | undefined) => {
@@ -43,10 +52,25 @@ function Timeline({
   kind?: 'intervals' | 'cpu' | 'gpu' | 'responsiveness';
   combined?: boolean;
 }) {
-  const [hover, setHover] = useState<{ time: number; value: number; x: number; y: number; label: string }>();
+  const [hover, setHover] = useState<{
+    time: number;
+    value: number;
+    x: number;
+    y: number;
+    label: string;
+    unit?: 'dB';
+  }>();
   const ref = useRef<HTMLCanvasElement>(null);
   const { timeline, statistics } = result;
   const responsiveness = kind === 'responsiveness';
+  const qualityMax = result.convergence
+    ? Math.ceil(
+        result.convergence.samples.reduce(
+          (max, sample) => Math.max(max, sample.psnr ?? 0),
+          Math.max(40, result.convergence.targetPsnr),
+        ) / 10,
+      ) * 10
+    : 40;
   const watchdog: Point[] = useMemo(
     () =>
       timeline.watchdogTimes
@@ -96,7 +120,7 @@ function Timeline({
     const times = new Set(timeline.frameIndices.map((i) => timeline.frameTimes[i]));
     return samples.filter(([time]) => times.has(time));
   }, [samples, responsiveness, timeline]);
-  const timeMax = Math.max(timeline.runEnd ?? maxTime, 0.001);
+  const timeMax = Math.max(maxTime, 0.001);
   useEffect(() => {
     const canvas = ref.current!;
     const draw = () => {
@@ -107,11 +131,10 @@ function Timeline({
       canvas.height = height * dpr;
       const ctx = canvas.getContext('2d')!;
       ctx.scale(dpr, dpr);
-      const left = 44,
-        right = Math.max(left + 1, width - 16),
-        top = 34,
+      const quality = result.convergence;
+      const { left, right, x } = chartLayout(width, timeMax);
+      const top = 34,
         bottom = height - 28;
-      const x = (t: number) => left + (t / timeMax) * (right - left);
       const y = (v: number) => bottom - (v / scale.max) * (bottom - top);
       const style = getComputedStyle(canvas),
         color = (name: string) => style.getPropertyValue(name).trim();
@@ -148,16 +171,16 @@ function Timeline({
       }
       ctx.textAlign = 'left';
       ctx.fillText('ms', 4, 20);
-      for (let t = 0; t <= timeMax; t++) {
+      for (const t of timeTicks(timeMax, right - left)) {
         ctx.beginPath();
         ctx.moveTo(x(t), top);
         ctx.lineTo(x(t), bottom);
         ctx.stroke();
-        ctx.textAlign = t === 0 ? 'left' : t + 0.5 > timeMax ? 'right' : 'center';
-        ctx.fillText(`${t}`, x(t), height - 8);
+        ctx.textAlign = t === 0 ? 'left' : t === timeMax ? 'right' : 'center';
+        ctx.fillText(`${Number(t.toFixed(2))}`, x(t), height - 8);
       }
       ctx.textAlign = 'right';
-      ctx.fillText('seconds', right, height - 30);
+      ctx.fillText('seconds', right, top - 14);
       const metricColor = responsiveness ? responsivenessColor : frameTimeColor;
       ctx.lineWidth = 1.5;
       for (let i = 1; i < plot.length; i++) {
@@ -183,7 +206,37 @@ function Timeline({
           ctx.stroke();
         }
       }
-      let previousLabel: number | undefined;
+      if (quality) {
+        const maximum = qualityMax;
+        const qualityY = (value: number) => bottom - (value / maximum) * (bottom - top);
+        ctx.strokeStyle = '#a855f7';
+        ctx.fillStyle = '#a855f7';
+        ctx.textAlign = 'left';
+        ctx.fillText('PSNR dB', right + 4, 20);
+        for (let tick = 0; tick <= maximum; tick += maximum / 4) ctx.fillText(`${tick}`, right + 6, qualityY(tick) + 4);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        quality.samples.forEach((sample, index) => {
+          const pointY = qualityY(sample.psnr ?? maximum);
+          if (index === 0) ctx.moveTo(x(sample.at), pointY);
+          else ctx.lineTo(x(sample.at), pointY);
+        });
+        ctx.stroke();
+        for (const sample of quality.samples) {
+          ctx.beginPath();
+          ctx.arc(x(sample.at), qualityY(sample.psnr ?? maximum), 2.5, 0, 2 * Math.PI);
+          ctx.fill();
+        }
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(left, qualityY(quality.targetPsnr));
+        ctx.lineTo(right, qualityY(quality.targetPsnr));
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.textAlign = 'right';
+      }
+
       for (const [value, label, ink] of [
         [average, 'average', '#3b82f6'],
         [p95, 'P95', '#ef4444'],
@@ -199,12 +252,11 @@ function Timeline({
         ctx.stroke();
         ctx.setLineDash([]);
         ctx.lineDashOffset = 0;
-        let labelY = Math.max(top + 12, y(value) - 4);
-        if (previousLabel !== undefined && Math.abs(labelY - previousLabel) < 16) labelY = previousLabel + 16;
-        previousLabel = labelY;
-        ctx.fillText(`${label} ${Number(value.toFixed(2))} ms`, right - 8, labelY);
+        ctx.textAlign = 'left';
+        const labelY = top + (label === 'average' ? 12 : 48);
+        ctx.fillText(`${label} ${Number(value.toFixed(2))} ms`, right + 48, labelY);
         if (label === 'average' && kind === 'intervals' && value > 0)
-          ctx.fillText(`${(1000 / value).toFixed(1)} fps`, right - 8, labelY - 14);
+          ctx.fillText(`${(1000 / value).toFixed(1)} fps`, right + 48, labelY + 16);
       }
       const renderStart = timeline.renderStart;
       if ((responsiveness || combined) && renderStart !== undefined) {
@@ -237,7 +289,7 @@ function Timeline({
       observer.disconnect();
       theme.removeEventListener('change', draw);
     };
-  }, [result, kind, timeMax, hover, average, p95, timeline, scale, plot, responsiveness, combined]);
+  }, [result, kind, timeMax, hover, average, p95, timeline, scale, plot, responsiveness, combined, qualityMax]);
   return (
     <div className="timeline-container">
       <canvas
@@ -247,15 +299,18 @@ function Timeline({
           responsiveness
             ? 'Init Responsiveness timeline in milliseconds'
             : combined
-              ? 'Setup phases and frame timing in milliseconds with average and P95'
+              ? result.convergence
+                ? 'Setup phases, frame timing and PSNR convergence'
+                : 'Setup phases and frame timing in milliseconds with average and P95'
               : 'Frame rate timeline in milliseconds with average and P95'
         }
         onMouseLeave={() => setHover(undefined)}
         onMouseMove={(event) => {
           const rect = event.currentTarget.getBoundingClientRect(),
             px = event.clientX - rect.left;
-          const time = ((px - 44) / (rect.width - 60)) * timeMax;
-          if (px < 44 || px > rect.width - 16) {
+          const { right } = chartLayout(rect.width, timeMax);
+          const time = ((px - 44) / (right - 44)) * timeMax;
+          if (px < 44 || px > right) {
             setHover(undefined);
             return;
           }
@@ -272,6 +327,24 @@ function Timeline({
               y: event.clientY - rect.top,
             });
             return;
+          }
+          const quality = result.convergence;
+          if (quality?.samples.length && time >= quality.samples[0]!.at && time <= quality.samples.at(-1)!.at) {
+            const nearest = quality.samples.reduce((a, b) => (Math.abs(b.at - time) < Math.abs(a.at - time) ? b : a));
+            const top = 34,
+              bottom = rect.height - 28;
+            const py = bottom - ((nearest.psnr ?? qualityMax) / qualityMax) * (bottom - top);
+            if (Math.abs(event.clientY - rect.top - py) < 12) {
+              setHover({
+                time: nearest.at,
+                value: nearest.psnr ?? Infinity,
+                label: `PSNR · frame ${nearest.frame}`,
+                unit: 'dB',
+                x: Math.max(0, Math.min(px + 12, rect.width - 220)),
+                y: event.clientY - rect.top,
+              });
+              return;
+            }
           }
           const candidates = setup ? watchdog : samples;
           if (!candidates.length || time < candidates[0]![0] || time > candidates.at(-1)![0]) {
@@ -295,7 +368,10 @@ function Timeline({
       />
       {hover && (
         <div className="timeline-tooltip" style={{ left: hover.x, top: Math.max(0, hover.y - 32) }}>
-          {duration(hover.time)} elapsed · {hover.label} {duration(hover.value / 1000)}
+          {duration(hover.time)} elapsed · {hover.label}{' '}
+          {hover.unit === 'dB'
+            ? `${Number.isFinite(hover.value) ? hover.value.toFixed(2) : '∞'} dB`
+            : duration(hover.value / 1000)}
         </div>
       )}
     </div>
@@ -339,10 +415,9 @@ function Histogram({ values, responsiveness = false }: { values: number[]; respo
     </div>
   );
 }
-function Detail({ result }: { result: ProcessedResult }) {
+function Detail({ result, maxTime }: { result: ProcessedResult; maxTime: number }) {
   const [kind, setKind] = useState<'intervals' | 'cpu' | 'gpu'>('intervals');
   const { statistics, timeline } = result;
-  const maxTime = Math.max(0.001, timeline.runEnd ?? timeline.maxTime);
   const lateness = timeline.watchdogTimes
     .slice(1)
     .map((time, index) => Math.max(0, time - timeline.watchdogTimes[index]! - timeline.watchdogPeriod));
@@ -448,7 +523,8 @@ function Card({
         }}
       />
       <div className="card-main">
-        <div className="capture">
+        <div className={`capture${r.convergence ? ' convergence-capture' : ''}`}>
+          {r.convergence && <span className="convergence-badge">Convergence</span>}
           {item.screenshot ? (
             <img
               src={
@@ -463,6 +539,22 @@ function Card({
             <div className="capture-placeholder">
               ◇<small>capture unavailable</small>
             </div>
+          )}
+          {item.reference && (
+            <figure>
+              <img
+                src={`${item.reference}?updated=${imageRevision}`}
+                alt={`${entryTitle(r)} reference`}
+                loading="lazy"
+              />
+              <figcaption>Reference</figcaption>
+            </figure>
+          )}
+          {item.diff && (
+            <figure>
+              <img src={`${item.diff}?updated=${imageRevision}`} alt={`${entryTitle(r)} difference`} loading="lazy" />
+              <figcaption>Difference · 4× absolute RGB</figcaption>
+            </figure>
           )}
         </div>
         <div className="card-body">
@@ -501,30 +593,51 @@ function Card({
               </div>
             </div>
             <div className="stats">
-              {(Object.keys(metricTable) as SortKey[]).map((key) => (
-                <div
-                  key={key}
-                  title={
-                    key === 'download'
-                      ? `Known wire bytes across load and post-load; ${r.downloads?.reduce((count, report) => count + report.unknownSizeCount, 0) ?? 0} requests with hidden sizes`
-                      : undefined
-                  }
-                >
-                  <small>{metricTable[key].label}</small>
-                  <strong
-                    style={{ color: key === 'download' ? undefined : gradeColors[gradeMetric(key, metrics[key])] }}
+              {(Object.keys(metricTable) as SortKey[])
+                .filter((key) => key !== 'timeToTarget' || r.convergence)
+                .map((key) => (
+                  <div
+                    key={key}
+                    title={
+                      key === 'download'
+                        ? `Known wire bytes across load and post-load; ${r.downloads?.reduce((count, report) => count + report.unknownSizeCount, 0) ?? 0} requests with hidden sizes`
+                        : undefined
+                    }
                   >
-                    {key === 'download'
-                      ? `${r.downloads?.some((report) => report.unknownSizeCount > 0) ? '≥ ' : ''}${humanizeBytes(metrics.download, { emptyValue: '—' })}`
-                      : key === 'avgFrameRate'
-                        ? fps(metrics[key])
-                        : duration(metrics[key] === undefined ? undefined : metrics[key]! / 1000)}
-                  </strong>
-                </div>
-              ))}
+                    <small>
+                      {key === 'timeToTarget' ? `Time to ${r.convergence?.targetPsnr} dB` : metricTable[key].label}
+                    </small>
+                    <strong
+                      style={{ color: key === 'download' ? undefined : gradeColors[gradeMetric(key, metrics[key])] }}
+                    >
+                      {key === 'timeToTarget' && metrics[key] === undefined
+                        ? 'not reached'
+                        : key === 'download'
+                          ? `${r.downloads?.some((report) => report.unknownSizeCount > 0) ? '≥ ' : ''}${humanizeBytes(metrics.download, { emptyValue: '—' })}`
+                          : key === 'avgFrameRate'
+                            ? fps(metrics[key])
+                            : duration(metrics[key] === undefined ? undefined : metrics[key]! / 1000)}
+                    </strong>
+                  </div>
+                ))}
             </div>
           </div>
           <Timeline result={r} maxTime={maxTime} combined />
+          {r.convergence && (
+            <p className="convergence-summary">
+              Purple: PSNR · dashed: target {r.convergence.targetPsnr} dB · {r.convergence.samples.length} samples ·
+              final{' '}
+              {r.convergence.samples.length
+                ? r.convergence.samples.at(-1)!.psnr === null
+                  ? '∞'
+                  : r.convergence.samples.at(-1)!.psnr!.toFixed(2)
+                : '—'}{' '}
+              dB
+              {r.convergence.framesToTarget !== undefined
+                ? ` · target first observed at frame ${r.convergence.framesToTarget}`
+                : ''}
+            </p>
+          )}
         </div>
       </div>
       {(r.error || r.status !== 'ok') && <p className="error">{r.error?.message ?? r.status}</p>}
@@ -675,6 +788,8 @@ function App() {
           metrics,
           result,
           ...(result.screenshot ? { screenshot: `${directory}/screenshot.avif` } : {}),
+          ...(result.convergence?.reference ? { reference: `${directory}/reference.png` } : {}),
+          ...(result.convergence?.diff ? { diff: `${directory}/diff.png` } : {}),
         };
         pairApplied.set(metrics, request);
         setItems((previous) => {
@@ -924,7 +1039,7 @@ function App() {
               <>
                 <h1>{entryTitle(detailItem.result)}</h1>
                 {detailItem.result.error && <p className="error">{detailItem.result.error.message}</p>}
-                <Detail result={detailItem.result} />
+                <Detail result={detailItem.result} maxTime={Math.max(maxTime, detailItem.result.timeline.maxTime)} />
               </>
             ) : (
               <p className="empty">{items.length ? 'Result not found.' : 'Loading result…'}</p>
