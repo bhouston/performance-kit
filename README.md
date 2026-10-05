@@ -23,7 +23,7 @@ pnpm cli dev --out results
 
 Open the URL printed by `dev` (usually <http://localhost:4400>). The [demo suite](examples/demo-suite.json) renders a WebGL cube and a variant with deliberate init and frame stalls. The viewer shows captures, init phases, frame timelines, and detailed timing measurements. Search entries, filter renderer configurations or scenes, and sort by FPS, tail latency, jitter, or init time.
 
-The runner rejects software GPUs by default. Use `--allow-software` for functional checks only; those results do not establish hardware GPU performance. Add `--headful` to run visible Chrome or `--executable-path <path>` to choose an installed Chrome.
+The runner rejects software GPUs by default. Use `--allow-software` for functional checks only; those results do not establish hardware GPU performance. Add `--headful` to run visible Chrome or `--executable-path <path>` to choose an installed Chrome. Pass extra Chrome flags with a repeatable `--chrome-arg=<flag>`; they are recorded in each result's `environment.chromeFlags`. On Linux, measure with `--headful --vsync on` and no extra GPU flags. Headless Chrome there falls back to SwiftShader unless given `--chrome-arg=--enable-features=Vulkan --chrome-arg=--use-angle=vulkan`, but it has no frame backpressure, and neither does vsync off. In headful mode, `--enable-features=Vulkan` corrupts captured screenshots.
 
 ## See it in action
 
