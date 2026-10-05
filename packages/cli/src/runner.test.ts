@@ -84,9 +84,11 @@ describe('runner lifecycle', () => {
         port: 0,
         cooldownMs: 0,
         recycle: 1,
+        chromeArgs: ['--use-angle=vulkan'],
       });
       expect(result.results).toHaveLength(2);
       expect(launch).toHaveBeenCalledTimes(2);
+      expect(launch.mock.calls[0]![0].args).toContain('--use-angle=vulkan');
       const raw = JSON.parse(await readFile(join(result.out, 'bench/test/cube/metrics.json'), 'utf8'));
       expect(raw.environment.host.machineId).toBe('bench');
       expect(JSON.parse(await readFile(join(result.out, 'bench/machine.json'), 'utf8'))).toEqual({
@@ -94,6 +96,7 @@ describe('runner lifecycle', () => {
         name: 'Bench Machine',
       });
       expect(raw.environment.userAgent).toBe('pinned-test-chrome');
+      expect(raw.environment.chromeFlags).toContain('--use-angle=vulkan');
       expect(raw.config.phaseColors).toEqual({ assets: '#123456' });
       expect(raw.environment.gpuAdapter).toEqual({ description: 'Real GPU' });
       expect(JSON.parse(await readFile(join(result.out, 'index.json'), 'utf8')).results).toHaveLength(2);

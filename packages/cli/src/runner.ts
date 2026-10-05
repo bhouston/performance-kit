@@ -36,6 +36,8 @@ export interface RunOptions {
   isolation?: 'iframe' | 'page';
   allowSoftware?: boolean;
   executablePath?: string;
+  /** Extra Chrome command-line flags, such as `--use-angle=vulkan` for hardware WebGPU in headless Linux. */
+  chromeArgs?: string[];
   failOnError?: boolean;
 }
 export async function deadline<T>(promise: Promise<T>, timeoutMs: number, phase: string): Promise<T> {
@@ -79,7 +81,7 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
   const machineId = safeEntryId(options.machine ?? defaultMachineId());
   await mkdir(join(out, machineId), { recursive: true });
   if (options.machineName) await writeMachine(out, { id: machineId, name: options.machineName });
-  const flags = chromeFlags(suite.defaults?.vsync ?? 'on');
+  const flags = [...chromeFlags(suite.defaults?.vsync ?? 'on'), ...(options.chromeArgs ?? [])];
   const host = { os: `${platform()} ${release()}`, cpu: cpus()[0]?.model ?? 'unknown', machineId };
   let gitCommit: string | undefined;
   try {

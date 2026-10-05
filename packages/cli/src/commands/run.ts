@@ -31,6 +31,11 @@ const command: CommandModule = {
       .option('isolation', { choices: ['iframe', 'page'] as const, default: 'iframe' })
       .option('allow-software', { type: 'boolean', default: false })
       .option('executable-path', { type: 'string' })
+      .option('chrome-arg', {
+        type: 'array',
+        string: true,
+        describe: 'Extra Chrome flag, repeatable; use --chrome-arg=--flag (recorded in environment.chromeFlags)',
+      })
       .option('fail-on-error', { type: 'boolean', default: true }),
   handler: async (args) => {
     await runSuite({
@@ -54,6 +59,7 @@ const command: CommandModule = {
       isolation: args.isolation as 'iframe' | 'page',
       allowSoftware: args.allowSoftware as boolean,
       executablePath: args.executablePath as string | undefined,
+      chromeArgs: args.chromeArg as string[] | undefined,
       failOnError: args.failOnError as boolean,
     });
   },
