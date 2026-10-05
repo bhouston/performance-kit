@@ -1,6 +1,6 @@
 {
   "additionalProperties": false,
-  "$id": "https://bhouston.github.io/performance-kit/schema/v2/processed-result.schema.json",
+  "$id": "https://bhouston.github.io/performance-kit/schema/v3/processed-result.schema.json",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -12,13 +12,12 @@
     "status",
     "statistics",
     "timeline",
-    "measuredIntervalSeconds",
-    "timing",
-    "attribution"
+    "measuredIntervals",
+    "timing"
   ],
   "properties": {
     "schemaVersion": {
-      "const": 2,
+      "const": 3,
       "type": "number"
     },
     "runId": {
@@ -34,13 +33,13 @@
     "networkProfile": {
       "additionalProperties": false,
       "type": "object",
-      "required": ["name", "latencyMs", "downloadBytesPerSec", "uploadBytesPerSec"],
+      "required": ["name", "latency", "downloadBytesPerSec", "uploadBytesPerSec"],
       "properties": {
         "name": {
           "minLength": 1,
           "type": "string"
         },
-        "latencyMs": {
+        "latency": {
           "minimum": 0,
           "type": "number"
         },
@@ -277,9 +276,9 @@
     "config": {
       "additionalProperties": false,
       "type": "object",
-      "required": ["durationSeconds", "vsync"],
+      "required": ["duration", "vsync"],
       "properties": {
-        "durationSeconds": {
+        "duration": {
           "exclusiveMinimum": 0,
           "type": "number"
         },
@@ -441,8 +440,8 @@
         "intervalCount",
         "cpuSampleCount",
         "gpuSampleCount",
-        "initMaxBlockSeconds",
-        "initBlockedSeconds",
+        "initMaxBlockDuration",
+        "initBlockedDuration",
         "phaseDurations"
       ],
       "properties": {
@@ -483,16 +482,16 @@
         "tailFps": {
           "type": "number"
         },
-        "initSeconds": {
+        "initDuration": {
           "type": "number"
         },
-        "unaccountedSeconds": {
+        "unaccountedDuration": {
           "type": "number"
         },
-        "initMaxBlockSeconds": {
+        "initMaxBlockDuration": {
           "type": "number"
         },
-        "initBlockedSeconds": {
+        "initBlockedDuration": {
           "type": "number"
         },
         "cpuMedian": {
@@ -507,16 +506,16 @@
         "gpuP95": {
           "type": "number"
         },
-        "averageFrameSeconds": {
+        "averageFrameDuration": {
           "type": "number"
         },
         "averageFps": {
           "type": "number"
         },
-        "maxJitterSeconds": {
+        "maxJitter": {
           "type": "number"
         },
-        "worstResponsivenessSeconds": {
+        "worstResponsiveness": {
           "type": "number"
         },
         "phaseDurations": {
@@ -533,28 +532,18 @@
       "additionalProperties": false,
       "type": "object",
       "required": [
-        "timeUnit",
-        "valueUnit",
         "maxTime",
-        "frameSeconds",
-        "cpuSeconds",
-        "gpuSeconds",
+        "frameTimes",
+        "cpuDurations",
+        "gpuDurations",
         "frameIndices",
-        "watchdogSeconds",
+        "watchdogTimes",
         "watchdogIndices",
-        "watchdogPeriodSeconds",
+        "watchdogPeriod",
         "phases",
         "blocks"
       ],
       "properties": {
-        "timeUnit": {
-          "const": "seconds",
-          "type": "string"
-        },
-        "valueUnit": {
-          "const": "seconds",
-          "type": "string"
-        },
         "maxTime": {
           "minimum": 0,
           "type": "number"
@@ -571,13 +560,13 @@
         "runEnd": {
           "type": "number"
         },
-        "frameSeconds": {
+        "frameTimes": {
           "type": "array",
           "items": {
             "type": "number"
           }
         },
-        "cpuSeconds": {
+        "cpuDurations": {
           "type": "array",
           "items": {
             "anyOf": [
@@ -590,7 +579,7 @@
             ]
           }
         },
-        "gpuSeconds": {
+        "gpuDurations": {
           "type": "array",
           "items": {
             "anyOf": [
@@ -612,7 +601,7 @@
             "type": "integer"
           }
         },
-        "watchdogSeconds": {
+        "watchdogTimes": {
           "type": "array",
           "items": {
             "type": "number"
@@ -627,7 +616,7 @@
             "type": "integer"
           }
         },
-        "watchdogPeriodSeconds": {
+        "watchdogPeriod": {
           "const": 0.016,
           "type": "number"
         },
@@ -645,10 +634,7 @@
               "start": {
                 "type": "number"
               },
-              "end": {
-                "type": "number"
-              },
-              "durationSeconds": {
+              "duration": {
                 "type": "number"
               }
             }
@@ -660,15 +646,12 @@
           "items": {
             "additionalProperties": false,
             "type": "object",
-            "required": ["start", "end", "durationSeconds", "sources"],
+            "required": ["start", "duration", "sources"],
             "properties": {
               "start": {
                 "type": "number"
               },
-              "end": {
-                "type": "number"
-              },
-              "durationSeconds": {
+              "duration": {
                 "type": "number"
               },
               "sources": {
@@ -683,7 +666,7 @@
         }
       }
     },
-    "measuredIntervalSeconds": {
+    "measuredIntervals": {
       "type": "array",
       "items": {
         "exclusiveMinimum": 0,
@@ -693,12 +676,8 @@
     "timing": {
       "additionalProperties": false,
       "type": "object",
-      "required": ["timeUnit", "harness", "reporter", "messages"],
+      "required": ["harness", "reporter"],
       "properties": {
-        "timeUnit": {
-          "const": "epochSeconds",
-          "type": "string"
-        },
         "harness": {
           "additionalProperties": false,
           "type": "object",
@@ -743,112 +722,6 @@
             "runEnd": {
               "type": "number"
             }
-          }
-        },
-        "messages": {
-          "type": "array",
-          "items": {
-            "additionalProperties": false,
-            "type": "object",
-            "required": ["type", "direction", "sentAt", "receivedAt"],
-            "properties": {
-              "type": {
-                "type": "string"
-              },
-              "direction": {
-                "anyOf": [
-                  {
-                    "const": "toReporter",
-                    "type": "string"
-                  },
-                  {
-                    "const": "toHarness",
-                    "type": "string"
-                  }
-                ]
-              },
-              "sentAt": {
-                "additionalProperties": false,
-                "type": "object",
-                "required": ["clock", "t"],
-                "properties": {
-                  "clock": {
-                    "anyOf": [
-                      {
-                        "const": "harness",
-                        "type": "string"
-                      },
-                      {
-                        "const": "reporter",
-                        "type": "string"
-                      }
-                    ]
-                  },
-                  "t": {
-                    "minimum": 0,
-                    "type": "number"
-                  }
-                }
-              },
-              "receivedAt": {
-                "additionalProperties": false,
-                "type": "object",
-                "required": ["clock", "t"],
-                "properties": {
-                  "clock": {
-                    "anyOf": [
-                      {
-                        "const": "harness",
-                        "type": "string"
-                      },
-                      {
-                        "const": "reporter",
-                        "type": "string"
-                      }
-                    ]
-                  },
-                  "t": {
-                    "minimum": 0,
-                    "type": "number"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "attribution": {
-      "maxItems": 256,
-      "type": "array",
-      "items": {
-        "additionalProperties": false,
-        "type": "object",
-        "required": ["start", "end", "durationSeconds"],
-        "properties": {
-          "start": {
-            "type": "number"
-          },
-          "end": {
-            "type": "number"
-          },
-          "durationSeconds": {
-            "type": "number"
-          },
-          "sourceURL": {
-            "type": "string"
-          },
-          "invoker": {
-            "type": "string"
-          },
-          "invokerType": {
-            "type": "string"
-          },
-          "sourceFunctionName": {
-            "type": "string"
-          },
-          "sourceCharPosition": {
-            "type": "number"
           }
         }
       }

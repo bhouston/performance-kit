@@ -3,18 +3,18 @@ export type Slice = {
   t0: number;
   t1: number;
   contributions: { resourceIndex: number; bytes: number }[];
-  totalBytesPerMs: number;
+  totalBytesPerSecond: number;
 };
 export type BandwidthChartData = {
-  sliceMs: number;
+  sliceDuration: number;
   slices: Slice[];
   leadIns: { resourceIndex: number; t0: number; t1: number; y: number }[];
   colors: string[];
-  peakBytesPerMs: number;
+  peakBytesPerSecond: number;
 };
 /** Uniform arrival is an estimate; bin integration preserves every known wire byte. */
-export function bandwidthChartData(resources: ResourceRecord[], sliceMs = 10): BandwidthChartData {
-  if (!Number.isFinite(sliceMs) || sliceMs <= 0) throw new Error('sliceMs must be positive');
+export function bandwidthChartData(resources: ResourceRecord[], sliceDuration = 0.01): BandwidthChartData {
+  if (!Number.isFinite(sliceDuration) || sliceDuration <= 0) throw new Error('sliceDuration must be positive');
   const known = resources
     .map((resource, resourceIndex) => ({ resource, resourceIndex }))
     .filter(({ resource }) => resource.sizeKnown)
@@ -24,23 +24,23 @@ export function bandwidthChartData(resources: ResourceRecord[], sliceMs = 10): B
       Math.max(
         max,
         resource.responseEnd,
-        resource.responseStart + (resource.responseEnd <= resource.responseStart ? sliceMs : 0),
+        resource.responseStart + (resource.responseEnd <= resource.responseStart ? sliceDuration : 0),
       ),
     0,
   );
-  if (Math.ceil(end / sliceMs) > 100000) throw new Error('Too many bandwidth slices; increase sliceMs');
-  const slices: Slice[] = Array.from({ length: Math.ceil(end / sliceMs) }, (_, i) => ({
-    t0: i * sliceMs,
-    t1: (i + 1) * sliceMs,
+  if (Math.ceil(end / sliceDuration) > 100000) throw new Error('Too many bandwidth slices; increase sliceDuration');
+  const slices: Slice[] = Array.from({ length: Math.ceil(end / sliceDuration) }, (_, i) => ({
+    t0: i * sliceDuration,
+    t1: (i + 1) * sliceDuration,
     contributions: [],
-    totalBytesPerMs: 0,
+    totalBytesPerSecond: 0,
   }));
   const leadIns: BandwidthChartData['leadIns'] = [];
   for (const { resource: r, resourceIndex } of known) {
     const duration = r.responseEnd - r.responseStart;
-    const first = Math.floor(r.responseStart / sliceMs);
-    const last = duration > 0 ? Math.ceil(r.responseEnd / sliceMs) - 1 : first;
-    const base = slices[first]?.totalBytesPerMs ?? 0;
+    const first = Math.floor(r.responseStart / sliceDuration);
+    const last = duration > 0 ? Math.ceil(r.responseEnd / sliceDuration) - 1 : first;
+    const base = slices[first]?.totalBytesPerSecond ?? 0;
     leadIns.push({ resourceIndex, t0: r.startTime, t1: r.responseStart, y: base });
     for (let i = first; i <= last; i++) {
       const slice = slices[i]!;
@@ -48,7 +48,7 @@ export function bandwidthChartData(resources: ResourceRecord[], sliceMs = 10): B
       const bytes = duration > 0 ? (r.transferSize * overlap) / duration : r.transferSize;
       if (bytes > 0) {
         slice.contributions.push({ resourceIndex, bytes });
-        slice.totalBytesPerMs += bytes / sliceMs;
+        slice.totalBytesPerSecond += bytes / sliceDuration;
       }
     }
   }
@@ -59,10 +59,10 @@ export function bandwidthChartData(resources: ResourceRecord[], sliceMs = 10): B
     return `hsl(${Math.abs(hash) % 360} 65% 55%)`;
   });
   return {
-    sliceMs,
+    sliceDuration,
     slices,
     leadIns,
     colors,
-    peakBytesPerMs: slices.reduce((max, s) => Math.max(max, s.totalBytesPerMs), 0),
+    peakBytesPerSecond: slices.reduce((max, s) => Math.max(max, s.totalBytesPerSecond), 0),
   };
 }

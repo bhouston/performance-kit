@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { percentile, deriveRun, mergeBlocks, mannWhitney, compareRuns, summarizeRuns } from './derive.js';
 import { frameTimeColor, responsivenessColor } from './colorScales.js';
-import type { RunResult } from './index.js';
+import { processRun, type RunResult } from './index.js';
 function run(step = 10): RunResult {
   return {
     schemaVersion: 1,
@@ -128,4 +128,13 @@ it('rejects comparisons across network conditions, including differing recorded 
   expect(() => compareRuns([a], [b])).not.toThrow();
   b.networkProfile.latencyMs = 200;
   expect(() => compareRuns([a], [b])).toThrow('network profiles');
+});
+
+it('compares persisted seconds with raw milliseconds using the same network profile and frame statistics', () => {
+  const a = run(10),
+    b = run(20);
+  for (const input of [a, b]) input.networkProfile.latencyMs = 150;
+  expect(compareRuns([processRun(a)], [processRun(b)])).toEqual(compareRuns([a], [b]));
+  expect(compareRuns([a], [processRun(b)])).toEqual(compareRuns([a], [b]));
+  expect(summarizeRuns([processRun(a), processRun(b)])).toEqual(summarizeRuns([a, b]));
 });

@@ -52,9 +52,9 @@ describe('offline raw preprocessing', () => {
       ['p99', 'p99'],
       ['iqr', 'iqr'],
       ['mad', 'mad'],
-      ['initSeconds', 'initMs'],
-      ['initMaxBlockSeconds', 'initMaxBlockMs'],
-      ['initBlockedSeconds', 'initBlockedMs'],
+      ['initDuration', 'initMs'],
+      ['initMaxBlockDuration', 'initMaxBlockMs'],
+      ['initBlockedDuration', 'initBlockedMs'],
     ] as const)
       expect(metrics.statistics[output]).toBe(derived[source] === undefined ? undefined : derived[source]! / 1000);
     expect(metrics.statistics.typicalFps).toBe(derived.fps);
@@ -64,22 +64,22 @@ describe('offline raw preprocessing', () => {
     expect(metrics.statistics.phaseDurations).toEqual({ load: 0.004, unknown: 0.005 });
     expect(metrics.statistics.cpuMedian).toBe(0.002);
     expect(metrics.statistics.gpuMedian).toBe(0.003);
-    expect(metrics.timeline.frameSeconds).toHaveLength(5000);
-    expect(metrics.timeline.cpuSeconds).toHaveLength(5000);
-    expect(metrics.timeline.gpuSeconds).toHaveLength(5000);
+    expect(metrics.timeline.frameTimes).toHaveLength(5000);
+    expect(metrics.timeline.cpuDurations).toHaveLength(5000);
+    expect(metrics.timeline.gpuDurations).toHaveLength(5000);
     expect(metrics.timeline.frameIndices.length).toBeLessThanOrEqual(1536);
     expect(metrics.timeline.watchdogIndices.length).toBeLessThanOrEqual(512);
     expect(
       Math.max(
         ...metrics.timeline.frameIndices.flatMap((index) =>
           index + 1 < 5000
-            ? [(metrics.timeline.frameSeconds[index + 1]! - metrics.timeline.frameSeconds[index]!) * 1000]
+            ? [(metrics.timeline.frameTimes[index + 1]! - metrics.timeline.frameTimes[index]!) * 1000]
             : [],
         ),
       ),
     ).toBeCloseTo(200);
-    expect(Math.max(...metrics.timeline.cpuSeconds.filter((value): value is number => value !== null))).toBe(0.035);
-    expect(metrics.measuredIntervalSeconds).toHaveLength(4999);
+    expect(Math.max(...metrics.timeline.cpuDurations.filter((value): value is number => value !== null))).toBe(0.035);
+    expect(metrics.measuredIntervals).toHaveLength(4999);
     expect(metrics).not.toHaveProperty('histogram');
     assertProcessedResult(metrics);
     expect(JSON.stringify(metrics).length).toBeLessThan(JSON.stringify(input).length);
@@ -91,8 +91,8 @@ describe('offline raw preprocessing', () => {
     input.reporter.frames.unshift({ cpuStart: 1000, cpuEnd: 1001 });
     input.capture = { file: 'screenshot.avif', at: 1023 };
     const metrics = processRun(input);
-    expect(metrics.timeline.frameSeconds).toHaveLength(6);
-    expect(metrics.timeline.frameSeconds[0]).toBe(0.013);
+    expect(metrics.timeline.frameTimes).toHaveLength(6);
+    expect(metrics.timeline.frameTimes[0]).toBe(0.013);
     expect(metrics.timeline.ready).toBe(0.01);
     expect(metrics.timeline.runStart).toBe(0.03);
     expect(metrics.statistics.frameCount).toBe(4);
@@ -104,11 +104,11 @@ describe('offline raw preprocessing', () => {
     expect(validateProcessedResult(metrics)).toBe(true);
     input.reporter.runEnd = 1053;
     const clipped = processRun(input);
-    expect(clipped.timeline.frameSeconds).toHaveLength(5);
-    expect(clipped.timeline.frameSeconds.at(-1)).toBe(0.053);
+    expect(clipped.timeline.frameTimes).toHaveLength(5);
+    expect(clipped.timeline.frameTimes.at(-1)).toBe(0.053);
     expect(clipped.timeline.frameIndices.at(-1)).toBe(4);
   });
-  it('stores durations in seconds and independent clock-stamped message receipts', () => {
+  it('stores seconds throughout and omits unused diagnostic logs', () => {
     const input = raw(3);
     input.messages = [
       {
@@ -119,28 +119,25 @@ describe('offline raw preprocessing', () => {
       },
     ];
     const metrics = processRun(input);
-    expect(metrics.config).toEqual({ durationSeconds: 60, vsync: 'on' });
-    expect(metrics.timeline.watchdogPeriodSeconds).toBe(0.016);
-    expect(metrics.timeline.cpuSeconds[0]).toBe(0.002);
-    expect(metrics.timeline.gpuSeconds[0]).toBe(0.003);
-    expect(metrics.measuredIntervalSeconds).toEqual([0.01, 0.01]);
-    expect(metrics.timing.messages[0]).toEqual({
-      type: 'start',
-      direction: 'toReporter',
-      sentAt: { clock: 'harness', t: 1 },
-      receivedAt: { clock: 'reporter', t: 1.025 },
-    });
+    expect(metrics.config).toEqual({ duration: 60, vsync: 'on' });
+    expect(metrics.timeline.watchdogPeriod).toBe(0.016);
+    expect(metrics.timeline.cpuDurations[0]).toBe(0.002);
+    expect(metrics.timeline.gpuDurations[0]).toBe(0.003);
+    expect(metrics.measuredIntervals).toEqual([0.01, 0.01]);
+    expect(metrics.timing).not.toHaveProperty('messages');
+    expect(metrics).not.toHaveProperty('attribution');
     expect(metrics.timeline).not.toHaveProperty('discrepancies');
     expect(
       keys({
         statistics: metrics.statistics,
         timeline: metrics.timeline,
         timing: metrics.timing,
-        attribution: metrics.attribution,
       }).some((key) => key.endsWith('Ms')),
     ).toBe(false);
     expect(keys(metrics).includes('value')).toBe(false);
-    expect(metrics.timing.timeUnit).toBe('epochSeconds');
+    expect(keys(metrics).includes('end')).toBe(false);
+    expect(validateProcessedResult({ ...metrics, schemaVersion: 2 })).toBe(false);
+    expect(keys(metrics).some((key) => key.endsWith('Seconds') || key.endsWith('Ms'))).toBe(false);
   });
   it('keeps consecutive timestamps intact so rendering sampled indices never creates artificial frame gaps', () => {
     const input = raw();
@@ -150,9 +147,9 @@ describe('offline raw preprocessing', () => {
     expect(position).toBeGreaterThan(0);
     const index = indices[position - 1]!;
     const actualInterval = input.reporter.frames[index + 1]!.cpuStart - input.reporter.frames[index]!.cpuStart;
-    const displayInterval = (metrics.timeline.frameSeconds[index + 1]! - metrics.timeline.frameSeconds[index]!) * 1000;
+    const displayInterval = (metrics.timeline.frameTimes[index + 1]! - metrics.timeline.frameTimes[index]!) * 1000;
     expect(displayInterval).toBeCloseTo(actualInterval, 1);
-    expect(metrics.timeline.frameSeconds.at(-1)).toBe(
+    expect(metrics.timeline.frameTimes.at(-1)).toBe(
       Math.round((input.reporter.frames.at(-1)!.cpuStart - 1000) * 10) / 10000,
     );
     expect(metrics.statistics.intervalCount).toBe(4999);
@@ -163,10 +160,12 @@ describe('offline raw preprocessing', () => {
     delete input.reporter.frames[1]!.gpuStart;
     delete input.reporter.frames[1]!.gpuEnd;
     const metrics = processRun(input);
-    expect(metrics.timeline.cpuSeconds).toEqual([0.002, null, 0.002]);
-    expect(metrics.timeline.gpuSeconds).toEqual([0.003, null, 0.003]);
+    expect(metrics.timeline.cpuDurations).toEqual([0.002, null, 0.002]);
+    expect(metrics.timeline.gpuDurations).toEqual([0.003, null, 0.003]);
     expect(validateProcessedResult(metrics)).toBe(true);
-    expect(validateProcessedResult({ ...metrics, timeline: { ...metrics.timeline, cpuSeconds: [2, 2] } })).toBe(false);
+    expect(validateProcessedResult({ ...metrics, timeline: { ...metrics.timeline, cpuDurations: [2, 2] } })).toBe(
+      false,
+    );
     expect(validateProcessedResult({ ...metrics, timeline: { ...metrics.timeline, frameIndices: [0, 3] } })).toBe(
       false,
     );
@@ -186,12 +185,11 @@ describe('offline raw preprocessing', () => {
     expect(metrics.statistics).not.toHaveProperty('offsetSeconds');
     expect(metrics.timeline.runStart).toBe(0.01);
     expect(metrics.timeline.ready).toBe(0.005);
-    expect(metrics.timeline.frameSeconds[0]).toBe((input.reporter.frames[0]!.cpuStart - 1000) / 1000);
+    expect(metrics.timeline.frameTimes[0]).toBe((input.reporter.frames[0]!.cpuStart - 1000) / 1000);
     expect(metrics.timeline.phases.find((p) => p.phase === 'load')).toEqual({
       phase: 'load',
       start: 0.005,
-      end: 0.009,
-      durationSeconds: 0.004,
+      duration: 0.004,
     });
   });
   it('uses navigation-relative rounded timestamps while retaining exact statistics', () => {
@@ -206,23 +204,18 @@ describe('offline raw preprocessing', () => {
       { phase: 'load', start: { clock: 'reporter', t: 1004.84321 }, end: { clock: 'reporter', t: 1006.5555 } },
     ];
     const metrics = processRun(input);
-    expect(metrics.timeline.timeUnit).toBe('seconds');
-    expect(metrics.timeline.valueUnit).toBe('seconds');
-    expect(metrics.timeline.frameSeconds.slice(0, 2)).toEqual([0.0151, 0.0318]);
-    expect(metrics.timeline.cpuSeconds[0]).toBe(0.00235);
-    expect((metrics.timeline.frameSeconds[1]! - metrics.timeline.frameSeconds[0]!) * 1000).toBeCloseTo(16.7);
+    expect(metrics.timeline.frameTimes.slice(0, 2)).toEqual([0.0151, 0.0318]);
+    expect(metrics.timeline.cpuDurations[0]).toBe(0.00235);
+    expect((metrics.timeline.frameTimes[1]! - metrics.timeline.frameTimes[0]!) * 1000).toBeCloseTo(16.7);
     expect(metrics.timeline.phases.find((p) => p.phase === 'load')?.start).toBe(0.0048);
-    expect(metrics.timeline.phases.find((p) => p.phase === 'load')?.end).toBe(0.0066);
-    expect(metrics.timeline.phases.find((p) => p.phase === 'load')?.durationSeconds).toBe(
-      (1006.5555 - 1004.84321) / 1000,
-    );
+    expect(metrics.timeline.phases.find((p) => p.phase === 'load')?.duration).toBe((1006.5555 - 1004.84321) / 1000);
     expect(metrics.statistics.median).toBe(deriveRun(input).median! / 1000);
     expect(metrics.statistics.median).not.toBe(0.01667);
-    expect(metrics.measuredIntervalSeconds).toHaveLength(2);
+    expect(metrics.measuredIntervals).toHaveLength(2);
     expect(
       validateProcessedResult({
         ...metrics,
-        timeline: { ...metrics.timeline, frameSeconds: [[0.0101, 16.67]] },
+        timeline: { ...metrics.timeline, frameTimes: [[0.0101, 16.67]] },
       }),
     ).toBe(false);
   });
@@ -230,9 +223,9 @@ describe('offline raw preprocessing', () => {
     const input = raw();
     input.reporter.ready = 1055;
     const metrics = processRun(input);
-    expect(metrics.timeline.watchdogSeconds.length).toBeGreaterThan(4);
-    expect(metrics.timeline.watchdogSeconds.some((point) => point > metrics.timeline.ready!)).toBe(true);
-    expect(metrics.statistics.initBlockedSeconds).toBe(deriveRun(input).initBlockedMs / 1000);
+    expect(metrics.timeline.watchdogTimes.length).toBeGreaterThan(4);
+    expect(metrics.timeline.watchdogTimes.some((point) => point > metrics.timeline.ready!)).toBe(true);
+    expect(metrics.statistics.initBlockedDuration).toBe(deriveRun(input).initBlockedMs / 1000);
     delete input.reporter.ready;
     expect(processRun(input).timeline.watchdogIndices.length).toBeLessThanOrEqual(512);
     expect(processRun(input).timeline.watchdogIndices.length).toBeGreaterThan(3);
@@ -245,18 +238,18 @@ describe('offline raw preprocessing', () => {
     delete input.reporter.ready;
     delete input.reporter.phases;
     const metrics = processRun(input);
-    expect(metrics.timeline.frameSeconds[0]).toBe(input.reporter.frames[0]!.cpuStart / 1000);
+    expect(metrics.timeline.frameTimes[0]).toBe(input.reporter.frames[0]!.cpuStart / 1000);
     expect(metrics.statistics).not.toHaveProperty('offsetSeconds');
-    expect(metrics.statistics.initSeconds).toBeUndefined();
+    expect(metrics.statistics.initDuration).toBeUndefined();
   });
   it('keeps timeout statistics empty while showing available warmup frames', () => {
     const input = raw();
     input.status = 'timeout';
     delete input.reporter.runStart;
     const metrics = processRun(input);
-    expect(metrics.timeline.frameSeconds).toHaveLength(5000);
+    expect(metrics.timeline.frameTimes).toHaveLength(5000);
     expect(metrics.statistics.frameCount).toBe(0);
-    expect(metrics.measuredIntervalSeconds).toEqual([]);
+    expect(metrics.measuredIntervals).toEqual([]);
     expect(metrics.statistics.median).toBeUndefined();
     expect(validateProcessedResult(metrics)).toBe(true);
   });
@@ -284,10 +277,9 @@ describe('offline raw preprocessing', () => {
     expect(metrics.timeline.phases.filter((phase) => phase.phase === 'load')).toHaveLength(300);
     expect(metrics.statistics.phaseDurations.unknown).toBe(0.005);
     expect(metrics.timeline.blocks).toHaveLength(256);
-    expect(metrics.timeline.blocks[0]?.durationSeconds).toBe(0.005);
-    expect(metrics.attribution[0]?.durationSeconds).toBe(0.005);
-    expect(metrics.timing.messages).toHaveLength(600);
-    expect(metrics.attribution).toHaveLength(256);
+    expect(metrics.timeline.blocks[0]?.duration).toBe(0.005);
+    expect(metrics).not.toHaveProperty('attribution');
+    expect(metrics.timing).not.toHaveProperty('messages');
     expect(metrics.statistics.phaseDurations.load).toBe(1.5);
     expect(validateProcessedResult(metrics)).toBe(true);
   });
@@ -337,7 +329,7 @@ it('preserves network reports aligned with navigation-relative frame timing', ()
   run.reporter.downloads = [
     {
       phase: 'load',
-      timeOrigin: 900,
+      timeOrigin: 950,
       totalTransferBytes: 20,
       totalDecodedBytes: 40,
       unknownSizeCount: 0,
@@ -360,9 +352,21 @@ it('preserves network reports aligned with navigation-relative frame timing', ()
   ];
   const result = processRun(run);
   assertProcessedResult(result);
-  expect(result.downloads?.[0]?.timeOrigin).toBe(0);
-  expect(result.networkProfile).toEqual(run.networkProfile);
-  expect(run.reporter.downloads[0]!.timeOrigin).toBe(900);
+  expect(result.downloads?.[0]?.timeOrigin).toBe(0.05);
+  expect(result.networkProfile).toEqual({
+    name: 'slow-4g',
+    latency: 0.15,
+    downloadBytesPerSec: 200000,
+    uploadBytesPerSec: 93750,
+  });
+  expect(result.downloads?.[0]?.resources[0]).toMatchObject({
+    startTime: 0.01,
+    responseStart: 0.02,
+    responseEnd: 0.03,
+    transferSize: 20,
+    decodedBodySize: 40,
+  });
+  expect(run.reporter.downloads[0]!.timeOrigin).toBe(950);
 });
 
 it('keeps arbitrary duplicate phases, explicit render start and complete-data headline metrics', () => {
@@ -384,12 +388,30 @@ it('keeps arbitrary duplicate phases, explicit render start and complete-data he
   expect(result.timeline.phases.map((p) => p.phase)).toEqual(['assets', 'assets', '__proto__', 'unknown']);
   expect(result.statistics.phaseDurations.assets).toBe(0.02);
   expect(result.statistics.phaseDurations.__proto__).toBe(0.003);
-  expect(result.statistics.initSeconds).toBe(0.02); // Overlaps are not added to init time.
+  expect(result.statistics.initDuration).toBe(0.02); // Overlaps are not added to init time.
   expect(result.timeline.renderStart).toBe(0.02);
-  expect(result.statistics.averageFrameSeconds).toBe(0.02);
+  expect(result.statistics.averageFrameDuration).toBe(0.02);
   expect(result.statistics.averageFps).toBe(50);
-  expect(result.statistics.maxJitterSeconds).toBe(0.01);
-  expect(result.statistics.worstResponsivenessSeconds).toBe(0.064);
+  expect(result.statistics.maxJitter).toBe(0.01);
+  expect(result.statistics.worstResponsiveness).toBe(0.064);
   expect(result.config.phaseColors).toEqual({ assets: '#123456' });
   assertProcessedResult(JSON.parse(JSON.stringify(result)));
+});
+
+it('persists merged stall intervals as start and duration without losing source information', () => {
+  const input = raw(3);
+  input.reporter.runEnd = 1100;
+  input.reporter.watchdogTicks = [1000, 1016, 1096];
+  input.reporter.blocks = [{ start: 1030, end: 1100, source: 'loaf' }];
+  input.reporter.phases = [{ id: 0, phase: 'assets', start: { clock: 'reporter', t: 1000 } }];
+  const metrics = processRun(input);
+  expect(metrics.timeline.blocks).toEqual([{ start: 0.03, duration: 0.07, sources: ['loaf', 'watchdog'] }]);
+  expect(metrics.timeline.phases.find((phase) => phase.phase === 'assets')).toEqual({ phase: 'assets', start: 0 });
+  expect(validateProcessedResult(metrics)).toBe(true);
+  expect(
+    validateProcessedResult({
+      ...metrics,
+      timeline: { ...metrics.timeline, blocks: [{ ...metrics.timeline.blocks[0], end: 0.1 }] },
+    }),
+  ).toBe(false);
 });

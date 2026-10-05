@@ -205,16 +205,25 @@ export const RunResultSchema = Type.Object(
 export type RunResult = Static<typeof RunResultSchema>;
 const displayNumber = Type.Number();
 const optionalNumber = Type.Optional(displayNumber);
+/** Persisted metrics: seconds for all times, bytes for sizes, and bytes/second for network rates.
+ * Timeline and resource times are navigation-relative; timing contains Unix epoch timestamps.
+ * Browser-native milliseconds and GPU nanoseconds stay in the raw protocol only.
+ */
 export const ProcessedResultSchema = Type.Object(
   {
-    schemaVersion: Type.Literal(2),
+    schemaVersion: Type.Literal(3),
     runId: Type.String({ minLength: 1 }),
     suiteName: Type.Optional(Type.String()),
     screenshot: Type.Boolean(),
-    networkProfile: NetworkProfileSchema,
+    networkProfile: object({
+      name: NetworkProfileSchema.properties.name,
+      latency: time,
+      downloadBytesPerSec: NetworkProfileSchema.properties.downloadBytesPerSec,
+      uploadBytesPerSec: NetworkProfileSchema.properties.uploadBytesPerSec,
+    }),
     downloads: Type.Optional(Type.Array(DownloadReportSchema)),
     entry: RunResultSchema.properties.entry,
-    config: object({ durationSeconds: positive, vsync, phaseColors: Type.Optional(PhaseColorsSchema) }),
+    config: object({ duration: positive, vsync, phaseColors: Type.Optional(PhaseColorsSchema) }),
     environment: Type.Optional(EnvironmentSchema),
     status: RunResultSchema.properties.status,
     error: RunResultSchema.properties.error,
@@ -230,57 +239,52 @@ export const ProcessedResultSchema = Type.Object(
       mad: optionalNumber,
       typicalFps: optionalNumber,
       tailFps: optionalNumber,
-      initSeconds: optionalNumber,
-      unaccountedSeconds: optionalNumber,
-      initMaxBlockSeconds: displayNumber,
-      initBlockedSeconds: displayNumber,
+      initDuration: optionalNumber,
+      unaccountedDuration: optionalNumber,
+      initMaxBlockDuration: displayNumber,
+      initBlockedDuration: displayNumber,
       cpuMedian: optionalNumber,
       cpuP95: optionalNumber,
       gpuMedian: optionalNumber,
       gpuP95: optionalNumber,
-      averageFrameSeconds: optionalNumber,
+      averageFrameDuration: optionalNumber,
       averageFps: optionalNumber,
-      maxJitterSeconds: optionalNumber,
-      worstResponsivenessSeconds: optionalNumber,
+      maxJitter: optionalNumber,
+      worstResponsiveness: optionalNumber,
       phaseDurations: Type.Record(Type.String(), displayNumber),
     }),
     timeline: object({
-      timeUnit: Type.Literal('seconds'),
-      valueUnit: Type.Literal('seconds'),
       maxTime: Type.Number({ minimum: 0 }),
       ready: optionalNumber,
       renderStart: optionalNumber,
       runStart: optionalNumber,
       runEnd: optionalNumber,
-      frameSeconds: Type.Array(displayNumber),
-      cpuSeconds: Type.Array(Type.Union([displayNumber, Type.Null()])),
-      gpuSeconds: Type.Array(Type.Union([displayNumber, Type.Null()])),
+      frameTimes: Type.Array(displayNumber),
+      cpuDurations: Type.Array(Type.Union([displayNumber, Type.Null()])),
+      gpuDurations: Type.Array(Type.Union([displayNumber, Type.Null()])),
       frameIndices: Type.Array(Type.Integer({ minimum: 0 }), { maxItems: 1536, uniqueItems: true }),
-      watchdogSeconds: Type.Array(displayNumber),
+      watchdogTimes: Type.Array(displayNumber),
       watchdogIndices: Type.Array(Type.Integer({ minimum: 1 }), { maxItems: 512, uniqueItems: true }),
-      watchdogPeriodSeconds: Type.Literal(0.016),
+      watchdogPeriod: Type.Literal(0.016),
       phases: Type.Array(
         object({
           phase: PhaseMarkSchema.properties.phase,
           start: displayNumber,
-          end: optionalNumber,
-          durationSeconds: optionalNumber,
+          duration: optionalNumber,
         }),
       ),
       blocks: Type.Array(
         object({
           start: displayNumber,
-          end: displayNumber,
-          durationSeconds: displayNumber,
+          duration: displayNumber,
           sources: Type.Array(Type.String(), { maxItems: 3 }),
         }),
         { maxItems: 256 },
       ),
     }),
     // Exact measured observations support comparison and client-side histograms.
-    measuredIntervalSeconds: Type.Array(positive),
+    measuredIntervals: Type.Array(positive),
     timing: object({
-      timeUnit: Type.Literal('epochSeconds'),
       harness: object({
         iframeCreated: optionalNumber,
         runSent: optionalNumber,
@@ -296,25 +300,11 @@ export const ProcessedResultSchema = Type.Object(
         runStart: optionalNumber,
         runEnd: optionalNumber,
       }),
-      messages: Type.Array(MessageLogItemSchema),
     }),
-    attribution: Type.Array(
-      object({
-        start: displayNumber,
-        end: displayNumber,
-        durationSeconds: displayNumber,
-        sourceURL: Type.Optional(Type.String()),
-        invoker: Type.Optional(Type.String()),
-        invokerType: Type.Optional(Type.String()),
-        sourceFunctionName: Type.Optional(Type.String()),
-        sourceCharPosition: optionalNumber,
-      }),
-      { maxItems: 256 },
-    ),
   },
   {
     additionalProperties: false,
-    $id: 'https://bhouston.github.io/performance-kit/schema/v2/processed-result.schema.json',
+    $id: 'https://bhouston.github.io/performance-kit/schema/v3/processed-result.schema.json',
   },
 );
 export type ProcessedResult = Static<typeof ProcessedResultSchema>;
@@ -410,11 +400,11 @@ export const validateProcessedResult: ValidateFunction<ProcessedResult> = Object
     if (!valid) return false;
     const metrics = value as ProcessedResult;
     const timeline = metrics.timeline;
-    if (metrics.measuredIntervalSeconds.length !== metrics.statistics.intervalCount) {
+    if (metrics.measuredIntervals.length !== metrics.statistics.intervalCount) {
       validateProcessedResult.errors = [
         {
           keyword: 'alignment',
-          instancePath: '/measuredIntervalSeconds',
+          instancePath: '/measuredIntervals',
           schemaPath: '',
           params: {},
           message: 'must match intervalCount',
@@ -427,13 +417,13 @@ export const validateProcessedResult: ValidateFunction<ProcessedResult> = Object
       return false;
     };
     if (
-      timeline.cpuSeconds.length !== timeline.frameSeconds.length ||
-      timeline.gpuSeconds.length !== timeline.frameSeconds.length
+      timeline.cpuDurations.length !== timeline.frameTimes.length ||
+      timeline.gpuDurations.length !== timeline.frameTimes.length
     )
-      return error('/timeline', 'CPU and GPU arrays must align with frameSeconds');
+      return error('/timeline', 'CPU and GPU arrays must align with frameTimes');
     for (const [name, indices, length] of [
-      ['frameIndices', timeline.frameIndices, timeline.frameSeconds.length],
-      ['watchdogIndices', timeline.watchdogIndices, timeline.watchdogSeconds.length],
+      ['frameIndices', timeline.frameIndices, timeline.frameTimes.length],
+      ['watchdogIndices', timeline.watchdogIndices, timeline.watchdogTimes.length],
     ] as const) {
       if (indices.some((index, position) => index >= length || (position > 0 && index <= indices[position - 1]!)))
         return error(`/timeline/${name}`, 'indices must be ordered and refer to existing samples');

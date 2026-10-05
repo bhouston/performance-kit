@@ -30,10 +30,10 @@ const missing = (v: number | undefined) => v === undefined || !Number.isFinite(v
 export function cardMetrics(result: ProcessedResult): Record<SortKey, number | undefined> {
   const s = result.statistics;
   return {
-    initTime: ms(s.initSeconds),
+    initTime: ms(s.initDuration),
     avgFrameRate: s.averageFps,
-    maxJitter: ms(s.maxJitterSeconds),
-    worstResponsiveness: ms(s.worstResponsivenessSeconds),
+    maxJitter: ms(s.maxJitter),
+    worstResponsiveness: ms(s.worstResponsiveness),
     download: result.downloads?.reduce((total, report) => total + report.totalTransferBytes, 0),
   };
 }
@@ -42,6 +42,10 @@ export function compareMetrics(a: ProcessedResult, b: ProcessedResult, key: Sort
     right = cardMetrics(b)[key];
   if (missing(left) || missing(right)) return Number(missing(left)) - Number(missing(right));
   return (left! - right!) * metricTable[key].sign * (direction === 'bestFirst' ? 1 : -1);
+}
+/** An unfinished phase extends to render start when it is available. */
+export function phaseEnd(phase: { start: number; duration?: number }, renderStart?: number): number {
+  return phase.duration === undefined ? (renderStart ?? phase.start) : phase.start + phase.duration;
 }
 export function phaseColor(name: string, colors?: PhaseColorConfig): string {
   if (colors && Object.hasOwn(colors, name)) return colors[name]!;

@@ -121,9 +121,9 @@ it('treats metrics as canonical even when stale raw files remain, and rejects fu
     await processResults(root);
     expect((await scanResults(root)).runs[0]?.result.runId).toBe('test');
     const metrics = JSON.parse(await readFile(file, 'utf8'));
-    await writeFile(file, JSON.stringify({ ...metrics, schemaVersion: 3 }));
+    await writeFile(file, JSON.stringify({ ...metrics, schemaVersion: metrics.schemaVersion + 1 }));
     await expect(processResults(root)).rejects.toThrow('Invalid processed result');
-    expect(JSON.parse(await readFile(file, 'utf8')).schemaVersion).toBe(3);
+    expect(JSON.parse(await readFile(file, 'utf8')).schemaVersion).toBe(metrics.schemaVersion + 1);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

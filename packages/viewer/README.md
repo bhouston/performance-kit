@@ -22,7 +22,7 @@ Results use the flat layout `results/<renderer.id>/<scene.id>/`: `metrics.json` 
 }
 ```
 
-The viewer fetches the index, referenced metrics and screenshots, and an optional `README.md`. Metrics contain exact summary statistics, consecutive elapsed frame timestamps, aligned CPU/GPU costs, selected extrema indices, startup phases, blocks and script attribution. All durations use seconds. The framerate histogram is calculated from exact measured intervals; the responsiveness histogram uses consecutive init watchdog ticks minus its 16 ms period. Bins are never persisted.
+The viewer fetches the index, referenced metrics and screenshots, and an optional `README.md`. Metrics contain exact summary statistics, consecutive elapsed frame timestamps, aligned CPU/GPU costs, selected extrema indices, startup phases and blocks. All time measurements in schema v3 use seconds, including resource timings and network latency. Phases and blocks store `start` plus `duration`; the viewer computes their end. Unused message logs and script attribution are omitted. Regenerate older reports; there is no legacy reader. The framerate histogram is calculated from exact measured intervals; the responsiveness histogram uses consecutive init watchdog ticks minus its 16 ms period. Bins are never persisted.
 
 Search, sorting and renderer/scene filters live in the top navigation. Every visible card timeline share the duration of the longest currently filtered timeline. Hover over a line chart to see the elapsed time and nearest frame's frame interval. The Init phases table shows each startup phase's total duration and total client init time. Clock synchronization and discrepancy tables are removed. Typical and Tail use the precomputed exact median/p95 FPS. CLI comparisons read metrics directly.
 
@@ -36,8 +36,8 @@ are kept in the URL. Click a card to open `?result=<id>`; the **Performance resu
 Back) returns to the list and restores its position. Hover/focus the name to copy
 its bookmark link. Touch devices always show the bookmark control.
 
-Init time is elapsed reporter time from receiving start
-until explicit render start, falling back to ready for old results. Overlapping
+Init time is elapsed reporter time from navigation
+until explicit render start. Overlapping
 phases are not added together. Average FPS is the reciprocal of the arithmetic
 mean of measured frame intervals. Max jitter is the maximum absolute deviation
 from that mean. Worst responsiveness is maximum watchdog lateness across the run.

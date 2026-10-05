@@ -4,8 +4,7 @@ import { deriveRun, percentile, type Point } from './derive.js';
 export const MAX_TIMELINE_POINTS = 512;
 const seconds = (milliseconds: number) => Math.round(milliseconds * 10) / 10000;
 const costSeconds = (milliseconds: number) => Math.round(milliseconds * 100) / 100000;
-const durationSeconds = (milliseconds: number | undefined) =>
-  milliseconds === undefined ? undefined : milliseconds / 1000;
+const duration = (milliseconds: number | undefined) => (milliseconds === undefined ? undefined : milliseconds / 1000);
 /** Keep both endpoints and each time-ordered bucket's extrema without altering statistics. */
 export function downsampleExtrema(points: readonly Point[], limit = MAX_TIMELINE_POINTS): Point[] {
   if (!Number.isInteger(limit) || limit < 4 || limit > MAX_TIMELINE_POINTS)
@@ -56,11 +55,11 @@ export function processRun(run: RunResult): ProcessedResult {
       (run.reporter.ready === undefined || frame.cpuStart >= run.reporter.ready) &&
       (run.reporter.runEnd === undefined || frame.cpuStart <= run.reporter.runEnd),
   );
-  const frameSeconds = visible.map((frame) => local(frame.cpuStart));
-  const cpuSeconds = visible.map((frame) =>
+  const frameTimes = visible.map((frame) => local(frame.cpuStart));
+  const cpuDurations = visible.map((frame) =>
     frame.cpuEnd >= frame.cpuStart ? costSeconds(frame.cpuEnd - frame.cpuStart) : null,
   );
-  const gpuSeconds = visible.map((frame) => {
+  const gpuDurations = visible.map((frame) => {
     if (frame.gpuStart === undefined || frame.gpuEnd === undefined) return null;
     const value = Number(BigInt(frame.gpuEnd) - BigInt(frame.gpuStart)) / 1e6;
     return value >= 0 ? costSeconds(value) : null;
@@ -73,12 +72,12 @@ export function processRun(run: RunResult): ProcessedResult {
   );
   const cpuIndices = select(
     visible.flatMap((frame, index) =>
-      cpuSeconds[index] === null ? [] : [{ t: index, value: frame.cpuEnd - frame.cpuStart }],
+      cpuDurations[index] === null ? [] : [{ t: index, value: frame.cpuEnd - frame.cpuStart }],
     ),
   );
   const gpuIndices = select(
     visible.flatMap((frame, index) =>
-      gpuSeconds[index] === null
+      gpuDurations[index] === null
         ? []
         : [{ t: index, value: Number(BigInt(frame.gpuEnd!) - BigInt(frame.gpuStart!)) / 1e6 }],
     ),
@@ -90,7 +89,7 @@ export function processRun(run: RunResult): ProcessedResult {
   const ticks = (run.reporter.watchdogTicks ?? []).filter(
     (tick) => run.reporter.runEnd === undefined || tick <= run.reporter.runEnd,
   );
-  const watchdogSeconds = ticks.map(local);
+  const watchdogTimes = ticks.map(local);
   const watchdogIndices = select(
     ticks.slice(1).map((tick, index) => ({ t: index + 1, value: Math.max(0, tick - ticks[index]! - 16) })),
   );
@@ -99,25 +98,25 @@ export function processRun(run: RunResult): ProcessedResult {
     intervalCount: full.intervals.length,
     cpuSampleCount: full.cpu.length,
     gpuSampleCount: full.gpu.length,
-    initMaxBlockSeconds: full.initMaxBlockMs / 1000,
-    initBlockedSeconds: full.initBlockedMs / 1000,
+    initMaxBlockDuration: full.initMaxBlockMs / 1000,
+    initBlockedDuration: full.initBlockedMs / 1000,
     phaseDurations: Object.create(null) as Record<string, number>,
-    ...optional('averageFrameSeconds', durationSeconds(full.average)),
+    ...optional('averageFrameDuration', duration(full.average)),
     ...optional('averageFps', full.average ? 1000 / full.average : undefined),
-    ...optional('maxJitterSeconds', durationSeconds(full.maxJitter)),
-    ...optional('worstResponsivenessSeconds', durationSeconds(full.worstResponsiveness)),
-    ...optional('median', durationSeconds(full.median)),
-    ...optional('p95', durationSeconds(full.p95)),
-    ...optional('p99', durationSeconds(full.p99)),
-    ...optional('iqr', durationSeconds(full.iqr)),
-    ...optional('mad', durationSeconds(full.mad)),
+    ...optional('maxJitter', duration(full.maxJitter)),
+    ...optional('worstResponsiveness', duration(full.worstResponsiveness)),
+    ...optional('median', duration(full.median)),
+    ...optional('p95', duration(full.p95)),
+    ...optional('p99', duration(full.p99)),
+    ...optional('iqr', duration(full.iqr)),
+    ...optional('mad', duration(full.mad)),
     ...optional('typicalFps', full.fps),
     ...optional('tailFps', full.p95 ? 1000 / full.p95 : undefined),
-    ...optional('initSeconds', durationSeconds(full.initMs)),
-    ...optional('unaccountedSeconds', durationSeconds(full.unaccountedMs)),
+    ...optional('initDuration', duration(full.initMs)),
+    ...optional('unaccountedDuration', duration(full.unaccountedMs)),
     ...optional(
       'cpuMedian',
-      durationSeconds(
+      duration(
         percentile(
           full.cpu.map((point) => point.value),
           0.5,
@@ -126,7 +125,7 @@ export function processRun(run: RunResult): ProcessedResult {
     ),
     ...optional(
       'cpuP95',
-      durationSeconds(
+      duration(
         percentile(
           full.cpu.map((point) => point.value),
           0.95,
@@ -135,7 +134,7 @@ export function processRun(run: RunResult): ProcessedResult {
     ),
     ...optional(
       'gpuMedian',
-      durationSeconds(
+      duration(
         percentile(
           full.gpu.map((point) => point.value),
           0.5,
@@ -144,7 +143,7 @@ export function processRun(run: RunResult): ProcessedResult {
     ),
     ...optional(
       'gpuP95',
-      durationSeconds(
+      duration(
         percentile(
           full.gpu.map((point) => point.value),
           0.95,
@@ -157,53 +156,52 @@ export function processRun(run: RunResult): ProcessedResult {
       statistics.phaseDurations[phase.phase] = (statistics.phaseDurations[phase.phase] ?? 0) + phase.durationMs;
 
   for (const name of Object.keys(statistics.phaseDurations)) statistics.phaseDurations[name]! /= 1000;
-  const phases = full.phases.map((phase) => ({
+  const phases: ProcessedResult['timeline']['phases'] = full.phases.map((phase) => ({
     phase: phase.phase,
     start: local(phase.start),
-    ...(phase.end === undefined ? {} : { end: local(phase.end) }),
-    ...optional('durationSeconds', durationSeconds(phase.durationMs)),
+    ...optional('duration', duration(phase.durationMs)),
   }));
   const blocks = longest(full.blocks, 256).map((block) => ({
-    ...block,
-    sources: [...block.sources],
-    durationSeconds: (block.end - block.start) / 1000,
     start: local(block.start),
-    end: local(block.end),
-  }));
-  const attribution = longest(
-    (run.reporter.blocks ?? []).flatMap((block) => block.scripts ?? []),
-    256,
-  ).map((script) => ({
-    ...script,
-    durationSeconds: (script.end - script.start) / 1000,
-    start: local(script.start),
-    end: local(script.end),
+    duration: (block.end - block.start) / 1000,
+    sources: [...block.sources],
   }));
   const maxTime = Math.max(
     0,
     ...[run.reporter.runEnd, run.reporter.renderStart, run.reporter.ready, visible.at(-1)?.cpuStart, ticks.at(-1)]
       .filter((value): value is number => value !== undefined)
       .map(local),
-    ...phases.map((phase) => phase.end ?? phase.start),
-    ...blocks.map((block) => block.end),
+    ...phases.map((phase) => phase.start + (phase.duration ?? 0)),
+    ...blocks.map((block) => block.start + block.duration),
   );
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     runId: run.runId,
     screenshot: run.capture !== undefined,
-    networkProfile: structuredClone(run.networkProfile),
+    networkProfile: {
+      name: run.networkProfile.name,
+      latency: run.networkProfile.latencyMs / 1000,
+      downloadBytesPerSec: run.networkProfile.downloadBytesPerSec,
+      uploadBytesPerSec: run.networkProfile.uploadBytesPerSec,
+    },
     ...(run.reporter.downloads
       ? {
           downloads: run.reporter.downloads.map((report) => ({
             ...structuredClone(report),
-            timeOrigin: report.timeOrigin - reporterOrigin,
+            timeOrigin: (report.timeOrigin - reporterOrigin) / 1000,
+            resources: report.resources.map((resource) => ({
+              ...resource,
+              startTime: resource.startTime / 1000,
+              responseStart: resource.responseStart / 1000,
+              responseEnd: resource.responseEnd / 1000,
+            })),
           })),
         }
       : {}),
     ...(run.suiteName === undefined ? {} : { suiteName: run.suiteName }),
     entry: structuredClone(run.entry),
     config: {
-      durationSeconds: run.config.durationMs / 1000,
+      duration: run.config.durationMs / 1000,
       vsync: run.config.vsync,
       ...(run.config.phaseColors === undefined ? {} : { phaseColors: { ...run.config.phaseColors } }),
     },
@@ -212,26 +210,23 @@ export function processRun(run: RunResult): ProcessedResult {
     ...(run.error === undefined ? {} : { error: { ...run.error } }),
     statistics,
     timeline: {
-      timeUnit: 'seconds',
-      valueUnit: 'seconds',
       maxTime,
       ...optional('renderStart', run.reporter.renderStart === undefined ? undefined : local(run.reporter.renderStart!)),
       ...optional('ready', run.reporter.ready === undefined ? undefined : local(run.reporter.ready)),
       ...optional('runStart', run.reporter.runStart === undefined ? undefined : local(run.reporter.runStart)),
       ...optional('runEnd', run.reporter.runEnd === undefined ? undefined : local(run.reporter.runEnd)),
-      frameSeconds,
-      cpuSeconds,
-      gpuSeconds,
+      frameTimes,
+      cpuDurations,
+      gpuDurations,
       frameIndices,
-      watchdogSeconds,
+      watchdogTimes,
       watchdogIndices,
-      watchdogPeriodSeconds: 0.016,
+      watchdogPeriod: 0.016,
       phases,
       blocks,
     },
-    measuredIntervalSeconds: full.intervals.map((point) => point.value / 1000),
+    measuredIntervals: full.intervals.map((point) => point.value / 1000),
     timing: {
-      timeUnit: 'epochSeconds',
       harness: Object.fromEntries(
         Object.entries(run.harness).map(([key, value]) => [key, value / 1000]),
       ) as ProcessedResult['timing']['harness'],
@@ -241,12 +236,6 @@ export function processRun(run: RunResult): ProcessedResult {
           return typeof value === 'number' ? [[key, value / 1000]] : [];
         }),
       ),
-      messages: (run.messages ?? []).map((message) => ({
-        ...message,
-        sentAt: { ...message.sentAt, t: message.sentAt.t / 1000 },
-        receivedAt: { ...message.receivedAt, t: message.receivedAt.t / 1000 },
-      })),
     },
-    attribution,
   };
 }

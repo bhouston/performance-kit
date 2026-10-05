@@ -49,10 +49,10 @@ it('sorts each metric in both directions and leaves missing observations last', 
   const a = processRun(run),
     b = structuredClone(a),
     empty = processRun({ ...run, reporter: { frames: [] } });
-  b.statistics.initSeconds = 0.2;
+  b.statistics.initDuration = 0.2;
   b.statistics.averageFps = 25;
-  b.statistics.maxJitterSeconds = 0.02;
-  b.statistics.worstResponsivenessSeconds = 0.2;
+  b.statistics.maxJitter = 0.02;
+  b.statistics.worstResponsiveness = 0.2;
   for (const key of Object.keys(metricTable).filter((key) => key !== 'download') as (keyof typeof metricTable)[]) {
     expect(compareMetrics(a, b, key, 'bestFirst')).toBeLessThan(0);
     expect(compareMetrics(a, b, key, 'worstFirst')).toBeGreaterThan(0);

@@ -53,14 +53,14 @@ it('includes page and script startup in initialization, retaining exact frame st
   const result = processRun(run);
   assertProcessedResult(result);
   expect(result.timeline.phases).toEqual([
-    { phase: 'load', start: 0, end: 6.1, durationSeconds: 6.1 },
-    { phase: 'unknown', start: 6.1, end: 6.2, durationSeconds: 0.1 },
-    { phase: 'compile', start: 6.2, end: 6.25, durationSeconds: 0.05 },
-    { phase: 'unknown', start: 6.25, end: 6.3, durationSeconds: 0.05 },
+    { phase: 'load', start: 0, duration: 6.1 },
+    { phase: 'unknown', start: 6.1, duration: 0.1 },
+    { phase: 'compile', start: 6.2, duration: 0.05 },
+    { phase: 'unknown', start: 6.25, duration: 0.05 },
   ]);
-  expect(result.statistics.initSeconds).toBe(6.3);
+  expect(result.statistics.initDuration).toBe(6.3);
   expect(result.statistics.phaseDurations.unknown).toBe(0.15);
-  expect(result.measuredIntervalSeconds).toEqual([0.02, 0.02]);
+  expect(result.measuredIntervals).toEqual([0.02, 0.02]);
   expect(result.timing.reporter.navigationStart).toBe(1);
   expect(result.timing.harness).not.toHaveProperty('startSent');
 });
