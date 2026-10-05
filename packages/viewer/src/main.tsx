@@ -12,6 +12,7 @@ import {
   gradeColors,
   metricTable,
   phaseColor,
+  phaseEnd,
   chartScale,
   resultId,
   readRoute,
@@ -48,34 +49,31 @@ function Timeline({
   const responsiveness = kind === 'responsiveness';
   const watchdog: Point[] = useMemo(
     () =>
-      timeline.watchdogSeconds
+      timeline.watchdogTimes
         .slice(1)
-        .map(
-          (t, i) => [t, Math.max(0, t - timeline.watchdogSeconds[i]! - timeline.watchdogPeriodSeconds) * 1000] as Point,
-        ),
+        .map((t, i) => [t, Math.max(0, t - timeline.watchdogTimes[i]! - timeline.watchdogPeriod) * 1000] as Point),
     [timeline],
   );
   const samples: Point[] = useMemo(
     () =>
       responsiveness
         ? watchdog
-        : timeline.frameSeconds.flatMap((t, i) => {
+        : timeline.frameTimes.flatMap((t, i) => {
             const value =
               kind === 'intervals'
-                ? timeline.frameSeconds[i + 1] === undefined
+                ? timeline.frameTimes[i + 1] === undefined
                   ? undefined
-                  : (timeline.frameSeconds[i + 1]! - t) * 1000
+                  : (timeline.frameTimes[i + 1]! - t) * 1000
                 : kind === 'cpu'
-                  ? timeline.cpuSeconds[i]
-                  : timeline.gpuSeconds[i];
+                  ? timeline.cpuDurations[i]
+                  : timeline.gpuDurations[i];
             return value === undefined || value === null || value < 0
               ? []
               : [[t, kind === 'intervals' ? value : value * 1000] as Point];
           }),
     [timeline, kind, responsiveness, watchdog],
   );
-  const measured =
-    kind === 'intervals' ? result.measuredIntervalSeconds.map((v) => v * 1000) : samples.map((p) => p[1]);
+  const measured = kind === 'intervals' ? result.measuredIntervals.map((v) => v * 1000) : samples.map((p) => p[1]);
   const average = measured.length ? measured.reduce((a, b) => a + b, 0) / measured.length : undefined;
   const p95 =
     kind === 'intervals'
@@ -95,7 +93,7 @@ function Timeline({
   );
   const plot = useMemo(() => {
     if (responsiveness) return timeline.watchdogIndices.map((i) => samples[i - 1]!).filter(Boolean);
-    const times = new Set(timeline.frameIndices.map((i) => timeline.frameSeconds[i]));
+    const times = new Set(timeline.frameIndices.map((i) => timeline.frameTimes[i]));
     return samples.filter(([time]) => times.has(time));
   }, [samples, responsiveness, timeline]);
   const timeMax = Math.max(maxTime, 0.001);
@@ -125,7 +123,7 @@ function Timeline({
         ctx.fillRect(
           x(phase.start),
           top,
-          Math.max(0, x(phase.end ?? timeline.renderStart ?? phase.start) - x(phase.start)),
+          Math.max(0, x(phaseEnd(phase, timeline.renderStart)) - x(phase.start)),
           bottom - top,
         );
       }
@@ -133,7 +131,7 @@ function Timeline({
       if (responsiveness || combined) {
         for (const phase of timeline.phases) {
           const start = x(phase.start),
-            end = x(phase.end ?? timeline.renderStart ?? phase.start);
+            end = x(phaseEnd(phase, timeline.renderStart));
           ctx.fillStyle = phaseColor(phase.phase, result.config.phaseColors);
           ctx.fillRect(start, top - 12, Math.max(0, end - start), 8);
         }
@@ -172,12 +170,12 @@ function Timeline({
         ctx.stroke();
       }
       if (combined) {
-        const ticks = timeline.watchdogSeconds;
+        const ticks = timeline.watchdogTimes;
         ctx.lineWidth = 1;
         for (let n = 1; n < timeline.watchdogIndices.length; n++) {
           const a = timeline.watchdogIndices[n - 1]!,
             b = timeline.watchdogIndices[n]!;
-          const delay = (i: number) => Math.max(0, ticks[i]! - ticks[i - 1]! - timeline.watchdogPeriodSeconds) * 1000;
+          const delay = (i: number) => Math.max(0, ticks[i]! - ticks[i - 1]! - timeline.watchdogPeriod) * 1000;
           ctx.strokeStyle = responsivenessColor(delay(b));
           ctx.beginPath();
           ctx.moveTo(x(ticks[a]!), y(delay(a)));
@@ -263,14 +261,14 @@ function Timeline({
             setHover(undefined);
             return;
           }
-          const setup = combined && time < (timeline.renderStart ?? timeline.frameSeconds[0] ?? Infinity);
+          const setup = combined && time < (timeline.renderStart ?? timeline.frameTimes[0] ?? Infinity);
           const phase = setup
-            ? timeline.phases.find((p) => time >= p.start && time <= (p.end ?? timeline.renderStart ?? p.start))
+            ? timeline.phases.find((p) => time >= p.start && time <= phaseEnd(p, timeline.renderStart))
             : undefined;
           if (phase) {
             setHover({
               time,
-              value: (phase.durationSeconds ?? (phase.end ?? phase.start) - phase.start) * 1000,
+              value: (phase.duration ?? 0) * 1000,
               label: `${phase.phase} phase`,
               x: Math.max(0, Math.min(px + 12, rect.width - 220)),
               y: event.clientY - rect.top,
@@ -347,9 +345,9 @@ function Detail({ result }: { result: ProcessedResult }) {
   const [kind, setKind] = useState<'intervals' | 'cpu' | 'gpu'>('intervals');
   const { statistics, timeline } = result;
   const maxTime = Math.max(1, timeline.maxTime);
-  const lateness = timeline.watchdogSeconds
+  const lateness = timeline.watchdogTimes
     .slice(1)
-    .map((time, index) => Math.max(0, time - timeline.watchdogSeconds[index]! - timeline.watchdogPeriodSeconds));
+    .map((time, index) => Math.max(0, time - timeline.watchdogTimes[index]! - timeline.watchdogPeriod));
   return (
     <div className="detail">
       <div className="detail-heading">
@@ -365,7 +363,7 @@ function Detail({ result }: { result: ProcessedResult }) {
       <div className="detail-grid">
         <section>
           <h3>Rendering Histogram</h3>
-          <Histogram values={result.measuredIntervalSeconds} />
+          <Histogram values={result.measuredIntervals} />
           <p>
             Frame intervals · p99 {duration(statistics.p99)} · MAD {duration(statistics.mad)}
           </p>
@@ -380,8 +378,8 @@ function Detail({ result }: { result: ProcessedResult }) {
           <h3>Responsiveness Histogram</h3>
           <Histogram values={lateness} responsiveness />
           <p>
-            Watchdog lateness · blocked {duration(statistics.initBlockedSeconds)} · max block{' '}
-            {duration(statistics.initMaxBlockSeconds)}
+            Watchdog lateness · blocked {duration(statistics.initBlockedDuration)} · max block{' '}
+            {duration(statistics.initMaxBlockDuration)}
           </p>
         </section>
         <section>
@@ -402,7 +400,7 @@ function Detail({ result }: { result: ProcessedResult }) {
               ))}
               <tr>
                 <th scope="row">Total init</th>
-                <td>{duration(statistics.initSeconds)}</td>
+                <td>{duration(statistics.initDuration)}</td>
               </tr>
             </tbody>
           </table>

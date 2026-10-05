@@ -133,7 +133,7 @@ export function summarizeRuns(runs: readonly (RunResult | ProcessedResult)[]) {
   const medians = runs
     .filter((r) => r.status === 'ok')
     .map((r) =>
-      r.schemaVersion === 2
+      r.schemaVersion === 3
         ? r.statistics.median === undefined
           ? undefined
           : r.statistics.median * 1000
@@ -179,7 +179,7 @@ export function mannWhitney(a: readonly number[], b: readonly number[]) {
 const profileKey = (r: RunResult | ProcessedResult) =>
   JSON.stringify([
     r.networkProfile.name,
-    r.networkProfile.latencyMs,
+    r.schemaVersion === 1 ? r.networkProfile.latencyMs / 1000 : r.networkProfile.latency,
     r.networkProfile.downloadBytesPerSec,
     r.networkProfile.uploadBytesPerSec,
   ]);
@@ -200,16 +200,16 @@ export function compareRuns(
   const av = a
       .filter((r) => r.status === 'ok')
       .map((r) =>
-        r.schemaVersion === 2
-          ? r.measuredIntervalSeconds.map((value) => value * 1000)
+        r.schemaVersion === 3
+          ? r.measuredIntervals.map((value) => value * 1000)
           : deriveRun(r).intervals.map((p) => p.value),
       )
       .filter((v) => v.length),
     bv = b
       .filter((r) => r.status === 'ok')
       .map((r) =>
-        r.schemaVersion === 2
-          ? r.measuredIntervalSeconds.map((value) => value * 1000)
+        r.schemaVersion === 3
+          ? r.measuredIntervals.map((value) => value * 1000)
           : deriveRun(r).intervals.map((p) => p.value),
       )
       .filter((v) => v.length);
