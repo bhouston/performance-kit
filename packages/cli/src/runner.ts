@@ -38,6 +38,8 @@ export interface RunOptions {
   executablePath?: string;
   /** Extra Chrome command-line flags, such as `--use-angle=vulkan` for hardware WebGPU in headless Linux. */
   chromeArgs?: string[];
+  /** Overrides the suite's `defaults.vsync`, e.g. where Chrome lacks frame backpressure with vsync off. */
+  vsync?: 'on' | 'off';
   failOnError?: boolean;
 }
 export async function deadline<T>(promise: Promise<T>, timeoutMs: number, phase: string): Promise<T> {
@@ -81,7 +83,8 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
   const machineId = safeEntryId(options.machine ?? defaultMachineId());
   await mkdir(join(out, machineId), { recursive: true });
   if (options.machineName) await writeMachine(out, { id: machineId, name: options.machineName });
-  const flags = [...chromeFlags(suite.defaults?.vsync ?? 'on'), ...(options.chromeArgs ?? [])];
+  const vsync = options.vsync ?? suite.defaults?.vsync ?? 'on';
+  const flags = [...chromeFlags(vsync), ...(options.chromeArgs ?? [])];
   const host = { os: `${platform()} ${release()}`, cpu: cpus()[0]?.model ?? 'unknown', machineId };
   let gitCommit: string | undefined;
   try {
@@ -282,7 +285,7 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
         entry: { id: entry.id, name: entry.name, renderer: entry.renderer, scene: entry.scene, url: entry.url },
         config: {
           durationMs: entry.durationMs,
-          vsync: suite.defaults?.vsync ?? 'on',
+          vsync,
         },
         environment,
         harness: payload.harness,

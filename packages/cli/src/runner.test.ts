@@ -85,6 +85,7 @@ describe('runner lifecycle', () => {
         cooldownMs: 0,
         recycle: 1,
         chromeArgs: ['--use-angle=vulkan'],
+        vsync: 'off',
       });
       expect(result.results).toHaveLength(2);
       expect(launch).toHaveBeenCalledTimes(2);
@@ -97,6 +98,8 @@ describe('runner lifecycle', () => {
       });
       expect(raw.environment.userAgent).toBe('pinned-test-chrome');
       expect(raw.environment.chromeFlags).toContain('--use-angle=vulkan');
+      expect(raw.config.vsync).toBe('off');
+      expect(raw.environment.chromeFlags).toContain('--disable-gpu-vsync');
       expect(raw.config.phaseColors).toEqual({ assets: '#123456' });
       expect(raw.environment.gpuAdapter).toEqual({ description: 'Real GPU' });
       expect(JSON.parse(await readFile(join(result.out, 'index.json'), 'utf8')).results).toHaveLength(2);

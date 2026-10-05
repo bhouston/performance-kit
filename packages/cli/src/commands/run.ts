@@ -31,6 +31,10 @@ const command: CommandModule = {
       .option('isolation', { choices: ['iframe', 'page'] as const, default: 'iframe' })
       .option('allow-software', { type: 'boolean', default: false })
       .option('executable-path', { type: 'string' })
+      .option('vsync', {
+        choices: ['on', 'off'] as const,
+        describe: "Override the suite's defaults.vsync (recorded in each result's config)",
+      })
       .option('chrome-arg', {
         type: 'array',
         string: true,
@@ -60,6 +64,7 @@ const command: CommandModule = {
       allowSoftware: args.allowSoftware as boolean,
       executablePath: args.executablePath as string | undefined,
       chromeArgs: args.chromeArg as string[] | undefined,
+      vsync: args.vsync as 'on' | 'off' | undefined,
       failOnError: args.failOnError as boolean,
     });
   },
