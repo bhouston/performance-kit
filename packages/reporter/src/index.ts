@@ -11,7 +11,6 @@ import { observeDownloads } from './downloads.js';
 import { attachWebGPU, attachWebGL } from './gpu.js';
 import { attachThree } from './three.js';
 import type { GpuTiming } from './gpu.js';
-export type StartPayload = Extract<MessageToReporter, { type: 'start' }>['payload'];
 export interface ReporterOptions {
   runId?: string;
   harnessOrigin?: string;
@@ -21,7 +20,8 @@ export interface ReporterOptions {
 }
 export interface Reporter {
   readonly enabled: boolean;
-  onStart(callback: (payload: StartPayload) => void | Promise<void>): void;
+  readonly entryId: string;
+  readonly params: Record<string, unknown>;
   onCapture(
     callback: () =>
       | HTMLCanvasElement
@@ -58,17 +58,20 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
   const browser = typeof window !== 'undefined';
   const query = browser ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const runId = options.runId ?? query.get('performanceKitRunId') ?? '';
+  const entryId = query.get('performanceKitEntryId') ?? '';
+  const params: unknown = JSON.parse(query.get('performanceKitParams') ?? '{}');
+  if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error('Invalid workload params');
+  const navigationStart = performance.timeOrigin;
   const origin = options.harnessOrigin ?? query.get('performanceKitOrigin') ?? '';
   const bridge = browser && typeof window.__performanceKitSend === 'function';
   const enabled = browser && (options.enabled ?? Boolean(runId && (bridge || (window.parent !== window && origin))));
   const downloads = enabled ? observeDownloads() : undefined;
   let loaded = false;
   let disposed = false;
-  let startCallback: ((payload: StartPayload) => void | Promise<void>) | undefined;
   let captureCallback: Parameters<Reporter['onCapture']>[0] | undefined;
   let seq = 0;
   let receivedSeq = -1;
-  let state: 'idle' | 'init' | 'ready' | 'running' | 'ended' = 'idle';
+  let state: 'init' | 'ready' | 'running' | 'ended' = 'init';
   const phases: PhaseMark[] = [];
   const ticks: number[] = [];
   const incomingMessages: MessageLogItem[] = [];
@@ -79,7 +82,6 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
   let count = 0;
   let overflow = false;
   const explicit = new Map<number, FrameRecord>();
-  let startReceived: number | undefined;
   let runStart = 0;
   let runTimer: ReturnType<typeof setTimeout> | undefined;
   let watchdog: ReturnType<typeof setTimeout> | undefined;
@@ -120,7 +122,7 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
     if (overflow) error(new Error('Frame storage capacity exceeded; increase frameCapacity'));
     if (loaded) send('download-report', downloads!.snapshot('post-load'));
     send('runEnd', {
-      ...(startReceived === undefined ? {} : { startReceived }),
+      navigationStart,
       ...(runStart ? { runStart, renderStart: runStart } : {}),
       runEnd,
       frames: records(),
@@ -200,7 +202,6 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
       throw new Error('Unexpected protocol envelope properties');
     const payload = message.payload as Record<string, unknown>;
     const keys: Record<string, string[]> = {
-      start: ['entryId', 'params'],
       capture: ['mimeType'],
       run: ['durationMs'],
       abort: ['reason'],
@@ -208,16 +209,6 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
     const allowed = keys[String(message.type)];
     if (!allowed || Object.keys(payload).some((key) => !allowed.includes(key)))
       throw new Error('Invalid protocol type or payload properties');
-    if (
-      message.type === 'start' &&
-      !(
-        typeof payload.entryId === 'string' &&
-        payload.params &&
-        typeof payload.params === 'object' &&
-        !Array.isArray(payload.params)
-      )
-    )
-      throw new Error('Invalid start payload');
     if (message.type === 'capture' && payload.mimeType !== 'image/png') throw new Error('Invalid capture mimeType');
     if (
       message.type === 'run' &&
@@ -239,13 +230,6 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
         receivedAt: { clock: 'reporter', t: t1 },
       });
       switch (value.type) {
-        case 'start':
-          if (state !== 'idle') throw new Error('start received outside idle state');
-          startReceived = t1;
-          state = 'init';
-          beginObservers();
-          await startCallback?.(value.payload);
-          break;
         case 'capture': {
           if (state !== 'ended') throw new Error('capture requires ended state');
           if (!captureCallback) throw new Error('No capture callback registered');
@@ -297,9 +281,8 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
   };
   const api: Reporter = {
     enabled,
-    onStart(callback) {
-      startCallback = callback;
-    },
+    entryId,
+    params: params as Record<string, unknown>,
     onCapture(callback) {
       captureCallback = callback;
     },
@@ -331,6 +314,7 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
         error('ready requires init state');
         return;
       }
+      if (phases[0]?.phase === 'load' && !phases[0].end) api.phaseEnd(0);
       loaded = true;
       send('download-report', downloads!.snapshot('load'));
       state = 'ready';
@@ -418,23 +402,26 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
   if (enabled) {
     window.addEventListener('message', listener);
     if (bridge) window.__performanceKitReceive = bridgeReceiver;
-    queueMicrotask(() => {
-      const supported = typeof PerformanceObserver === 'undefined' ? [] : PerformanceObserver.supportedEntryTypes;
-      send('hello', {
-        reporterVersion: '0.1.0',
-        capabilities: {
-          gpuTimestamps: false,
-          longTasks: supported.includes('longtask'),
-          loaf: supported.includes('long-animation-frame'),
-        },
-      });
-      send('environment', {
-        userAgent: navigator.userAgent,
-        crossOriginIsolated: globalThis.crossOriginIsolated,
-        devicePixelRatio: window.devicePixelRatio,
-        gpuTimestampsAvailable: false,
-      });
+    const supported = typeof PerformanceObserver === 'undefined' ? [] : PerformanceObserver.supportedEntryTypes;
+    send('hello', {
+      reporterVersion: '0.1.0',
+      navigationStart,
+      capabilities: {
+        gpuTimestamps: false,
+        longTasks: supported.includes('longtask'),
+        loaf: supported.includes('long-animation-frame'),
+      },
     });
+    send('environment', {
+      userAgent: navigator.userAgent,
+      crossOriginIsolated: globalThis.crossOriginIsolated,
+      devicePixelRatio: window.devicePixelRatio,
+      gpuTimestampsAvailable: false,
+    });
+    beginObservers();
+    const load: PhaseMark = { id: 0, phase: 'load', start: { clock: 'reporter', t: navigationStart } };
+    phases.push(load);
+    send('phase', { ...load });
   }
   return api;
 }

@@ -20,7 +20,7 @@ describe('schema boundaries', () => {
       },
       networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
       config: { durationMs: 100, vsync: 'on' },
-      harness: { startSent: 1000, teardown: 1200 },
+      harness: { teardown: 1200 },
       reporter: { frames: [{ cpuStart: 1050, cpuEnd: 1051 }] },
       status: 'ok',
     };
@@ -137,7 +137,7 @@ describe('named renderer and scene references', () => {
     },
     networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
     config: { durationMs: 100, vsync: 'on' },
-    harness: { startSent: 1, teardown: 2 },
+    harness: { teardown: 2 },
     reporter: { frames: [] },
     status: 'ok',
   };

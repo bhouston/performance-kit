@@ -2,8 +2,6 @@
 export async function harnessRun(input: {
   runId: string;
   url: string;
-  entryId: string;
-  params: Record<string, unknown>;
   durationMs: number;
   initTimeoutMs: number;
   capture: boolean;
@@ -31,7 +29,7 @@ export async function harnessRun(input: {
   const iframe = document.createElement('iframe');
   iframe.style.cssText = `width:${input.width}px;height:${input.height}px;border:0`;
   iframe.allow = 'cross-origin-isolated';
-  const harness: Record<string, number> = { iframeCreated: now(), startSent: now() };
+  const harness: Record<string, number> = { iframeCreated: now() };
   const reporter: Record<string, unknown> = {
     frames: [],
     phases: [],
@@ -113,7 +111,10 @@ export async function harnessRun(input: {
         reporter.downloads ??= [] as unknown[];
         (reporter.downloads as unknown[]).push(message.payload);
       }
-      if (message.type === 'hello') reporter.hello = message.sentAt;
+      if (message.type === 'hello') {
+        reporter.hello = message.sentAt;
+        reporter.navigationStart = message.payload.navigationStart;
+      }
       if (message.type === 'phase') {
         const phases = reporter.phases as { id: number; phase: string; start: { t: number } }[];
         const mark = message.payload as (typeof phases)[number];
@@ -175,10 +176,6 @@ export async function harnessRun(input: {
   let capture: { at: number; bytes: number[] } | undefined;
   try {
     await wait('hello');
-    harness.startSent = send('start', {
-      entryId: input.entryId,
-      params: input.params,
-    });
     await wait('ready');
     harness.runSent = send('run', { durationMs: input.durationMs });
     await wait('runEnd', input.durationMs + input.initTimeoutMs);

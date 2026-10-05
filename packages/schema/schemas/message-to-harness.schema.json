@@ -223,6 +223,10 @@
             "reporterVersion": {
               "type": "string"
             },
+            "navigationStart": {
+              "minimum": 0,
+              "type": "number"
+            },
             "capabilities": {
               "additionalProperties": false,
               "type": "object",
@@ -442,7 +446,7 @@
           "type": "object",
           "required": ["runEnd", "frames", "blocks", "watchdogTicks"],
           "properties": {
-            "startReceived": {
+            "navigationStart": {
               "minimum": 0,
               "type": "number"
             },

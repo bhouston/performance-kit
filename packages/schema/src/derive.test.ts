@@ -15,10 +15,10 @@ function run(step = 10): RunResult {
     },
     networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
     config: { durationMs: 100, vsync: 'off' },
-    harness: { startSent: 1000, teardown: 1300, runSent: 1100, runEndObserved: 1208 },
+    harness: { teardown: 1300, runSent: 1100, runEndObserved: 1208 },
     reporter: {
       hello: 1005,
-      startReceived: 1005,
+      navigationStart: 1005,
       ready: 1055,
       renderStart: 1055,
       runStart: 1105,

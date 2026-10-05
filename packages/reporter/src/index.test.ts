@@ -41,7 +41,10 @@ it('measures first ready frames, records receipts and rejects wrong origins', as
     },
   };
   vi.stubGlobal('window', {
-    location: { search: '?performanceKitRunId=test&performanceKitOrigin=https%3A%2F%2Fharness.example' },
+    location: {
+      search:
+        '?performanceKitRunId=test&performanceKitOrigin=https%3A%2F%2Fharness.example&performanceKitEntryId=cube&performanceKitParams=%7B%22quality%22%3A2%7D',
+    },
     parent,
     devicePixelRatio: 1,
     addEventListener(_type: string, callback: typeof listener) {
@@ -52,7 +55,12 @@ it('measures first ready frames, records receipts and rejects wrong origins', as
   vi.stubGlobal('navigator', { userAgent: 'test' });
   vi.stubGlobal('PerformanceObserver', undefined);
   const reporter = createReporter();
-  reporter.onStart(() => {
+  expect(reporter.entryId).toBe('cube');
+  expect(reporter.params).toEqual({ quality: 2 });
+  expect(messages[0]?.type).toBe('hello');
+  expect(messages.find((m) => m.type === 'phase')?.payload.start.t).toBe(performance.timeOrigin);
+  reporter.phaseEnd('load');
+  {
     const outer = reporter.phaseStart('assets');
     const inner = reporter.phaseStart('assets');
     reporter.phaseEnd(inner);
@@ -60,7 +68,7 @@ it('measures first ready frames, records receipts and rejects wrong origins', as
     reporter.phaseStart('assets');
     reporter.phaseEnd('assets');
     reporter.ready();
-  });
+  }
   await Promise.resolve();
   let seq = 0;
   const send = (type: string, payload: unknown, origin = 'https://harness.example') =>
@@ -77,14 +85,15 @@ it('measures first ready frames, records receipts and rejects wrong origins', as
         payload,
       },
     });
-  send('start', { entryId: 'cube', params: {} }, 'https://attacker.example');
+  const messagesBeforeAttack = messages.length;
+  send('run', { durationMs: 20 }, 'https://attacker.example');
+  expect(messages).toHaveLength(messagesBeforeAttack);
   seq = 0; // An untrusted sender has its own sequence; it cannot consume the harness sequence.
   expect(messages.some((message) => message.type === 'syncPong')).toBe(false);
-  send('start', { entryId: 'cube', params: {} });
   await Promise.resolve();
   const phases = messages.filter((m) => m.type === 'phase').map((m) => m.payload);
-  expect(phases.map((p) => p.id)).toEqual([0, 1, 1, 0, 2, 2]);
-  expect(phases.slice(0, 2).every((p) => p.end === undefined)).toBe(true);
+  expect(phases.map((p) => p.id)).toEqual([0, 0, 1, 2, 2, 1, 3, 3]);
+  expect(phases.filter((p) => !p.end).map((p) => p.id)).toEqual([0, 1, 2, 3]);
   expect(messages.find((m) => m.type === 'ready')?.payload.renderStart).toBeDefined();
   const first = reporter.frameBegin({ animationTime: 1 });
   reporter.frameEnd(first);
@@ -96,9 +105,10 @@ it('measures first ready frames, records receipts and rejects wrong origins', as
   const result = messages.find((message) => message.type === 'runEnd')?.payload;
   expect(result.frames).toHaveLength(2);
   expect(result.frames[0].cpuStart).toBeGreaterThanOrEqual(result.runStart);
-  expect(result.startReceived).toBeLessThanOrEqual(result.runStart);
+  expect(result.navigationStart).toBe(performance.timeOrigin);
+  expect(result).not.toHaveProperty('startReceived');
   expect(result.frames[1]).toMatchObject({ animationTime: 2, gpuStart: '100', gpuEnd: '200' });
-  expect(result.messages.map((message: { type: string }) => message.type)).toEqual(['start', 'run']);
+  expect(result.messages.map((message: { type: string }) => message.type)).toEqual(['run']);
   seq += 1; // Simulate a dropped harness message.
   send('run', { durationMs: 20 });
   expect(messages.filter((message) => message.type === 'error').at(-1)?.payload.message).toContain(

@@ -45,6 +45,7 @@ export function compareMetrics(a: ProcessedResult, b: ProcessedResult, key: Sort
 }
 export function phaseColor(name: string, colors?: PhaseColorConfig): string {
   if (colors && Object.hasOwn(colors, name)) return colors[name]!;
+  if (name === 'unknown') return '#94a3b8';
   let hash = 2166136261;
   for (const character of name) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
   // Reserve red/orange/green for metric grades; phase hues stay in the cyan/blue/violet range.
@@ -64,7 +65,7 @@ export function resultId(result: ProcessedResult): string {
 export function readRoute(url: URL) {
   const sort = url.searchParams.get('sort');
   return {
-    sort: sort && Object.hasOwn(metricTable, sort) ? (sort as SortKey) : ('initTime' as SortKey),
+    sort: sort && Object.hasOwn(metricTable, sort) ? (sort as SortKey) : ('avgFrameRate' as SortKey),
     direction: url.searchParams.get('dir') === 'worstFirst' ? ('worstFirst' as const) : ('bestFirst' as const),
     result: url.searchParams.get('result'),
     query: url.searchParams.get('q') ?? '',

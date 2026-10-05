@@ -11,8 +11,8 @@ const reporter = createReporter();
 const canvas = document.querySelector('canvas');
 let animation = 0;
 let draw;
-reporter.onStart(async ({ params }) => {
-  reporter.phaseStart('load');
+async function initialize() {
+  const params = reporter.params;
   canvas.width = 960;
   canvas.height = 540;
   const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true });
@@ -94,7 +94,8 @@ reporter.onStart(async ({ params }) => {
     animation = requestAnimationFrame(tick);
   };
   animation = requestAnimationFrame(tick);
-});
+}
+void initialize().catch((error) => reporter.fail(error));
 reporter.onCapture(() => {
   draw();
   return canvas;

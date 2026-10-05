@@ -23,7 +23,7 @@ const launch = vi.hoisted(() =>
         if (input) {
           if (scenario.failure) throw new Error(scenario.failure);
           return {
-            harness: { iframeCreated: 1000, startSent: 1000, runSent: 1010, runEndObserved: 1110, teardown: 1111 },
+            harness: { iframeCreated: 1000, runSent: 1010, runEndObserved: 1110, teardown: 1111 },
             reporter: { frames: [], runStart: 1010, runEnd: 1110 },
             messages: [],
             environment: scenario.environment,

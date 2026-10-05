@@ -16,10 +16,10 @@ const run: RunResult = {
   entry: { id: 'entry', name: 'Entry', renderer: { id: 'a', name: 'A' }, scene: { id: 'b', name: 'B' }, url: '/test' },
   networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
   config: { durationMs: 1000, vsync: 'on' },
-  harness: { startSent: 0, teardown: 1000 },
+  harness: { teardown: 1000 },
   status: 'ok',
   reporter: {
-    startReceived: 0,
+    navigationStart: 0,
     ready: 100,
     renderStart: 100,
     runStart: 100,
@@ -86,7 +86,8 @@ it('roundtrips shareable sort, detail and filter URLs and defaults invalid optio
   expect(
     readRoute(new URL('https://example.test/?result=x&sort=avgFrameRate&dir=worstFirst&q=cube&renderer=a&scene=b')),
   ).toEqual({ result: 'x', sort: 'avgFrameRate', direction: 'worstFirst', query: 'cube', renderer: 'a', scene: 'b' });
-  expect(readRoute(new URL('https://example.test/?sort=__proto__&dir=no')).sort).toBe('initTime');
+  expect(readRoute(new URL('https://example.test/?sort=__proto__&dir=no')).sort).toBe('avgFrameRate');
+  expect(readRoute(new URL('https://example.test/'))).toMatchObject({ sort: 'avgFrameRate', direction: 'bestFirst' });
   const a = processRun(run),
     b = structuredClone(a);
   b.entry.renderer.id = 'a-b';
