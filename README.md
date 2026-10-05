@@ -73,7 +73,7 @@ results/
         screenshot.avif             optional capture
 ```
 
-`--machine <id>` selects the machine folder and defaults to a slug of the host name. `--machine-name "MacBook Air M3"` writes `machine.json`; a machine without one is displayed by its ID. The machine ID is also recorded in `environment.host.machineId`. When results exist for more than one machine, the viewer shows a **Machines** selector in the navigation; each machine's results are filtered and sorted separately, and the selection is kept in the URL as `?machine=<id>`.
+`--machine <id>` selects the machine folder and defaults to a slug of the host name. `--machine-name "MacBook Air M3"` writes `machine.json`; a machine without one is displayed by its ID. The machine ID is also recorded in `environment.host.machineId`. When results exist for more than one machine, the viewer shows a **Machines** selector in the navigation; each machine's results are filtered and sorted separately, the machine with the most results is shown first, and the selection is kept in the URL as `?machine=<id>`.
 
 Captures use the same settings as ss-fidelity: AVIF quality 90, chroma subsampling `4:4:4`, and alpha removed. The browser captures lossless PNG after the measured run ends; the runner then converts it to AVIF. Frames are measured immediately from ready, including the first rendering frames, with no warmup wait. Each renderer/scene pair runs once and saves compact metrics.json directly; new runs never write raw.json. Timeouts and errors are written as results, and `run` exits nonzero when any entry fails.
 

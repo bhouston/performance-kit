@@ -865,8 +865,11 @@ function App() {
   const machines = [...new Map(items.map((item) => [item.machine.id, item.machine])).values()].toSorted((a, b) =>
     a.id.localeCompare(b.id),
   );
-  // An unknown or empty machine selection falls back to the first machine with results.
-  const activeMachine = machines.find((item) => item.id === machine) ?? machines[0];
+  // An unknown or empty machine selection falls back to the machine with the most results.
+  const resultCounts = Map.groupBy(items, (item) => item.machine.id);
+  const activeMachine =
+    machines.find((item) => item.id === machine) ??
+    machines.toSorted((a, b) => (resultCounts.get(b.id)?.length ?? 0) - (resultCounts.get(a.id)?.length ?? 0))[0];
   const machineItems = items.filter((item) => item.machine.id === activeMachine?.id);
   const renderers = [
     ...new Map(machineItems.map((item) => [item.result.entry.renderer.id, item.result.entry.renderer])).values(),
