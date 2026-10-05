@@ -7,6 +7,11 @@ const command: CommandModule = {
     yargs
       .option('suite', { type: 'string', demandOption: true })
       .option('out', { type: 'string', default: 'performance-results' })
+      .option('machine', {
+        type: 'string',
+        describe: 'Machine folder ID inside --out (defaults to a slug of the host name)',
+      })
+      .option('machine-name', { type: 'string', describe: 'Human-readable machine description saved to machine.json' })
       .option('renderer', { type: 'array', string: true, describe: 'Include these renderer configuration IDs' })
       .option('scene', { type: 'array', string: true, describe: 'Include these scene IDs' })
       .option('headful', { type: 'boolean', default: false })
@@ -31,6 +36,8 @@ const command: CommandModule = {
     await runSuite({
       suite: args.suite as string,
       out: args.out as string,
+      machine: args.machine as string | undefined,
+      machineName: args.machineName as string | undefined,
       renderer: args.renderer as string[] | undefined,
       scene: args.scene as string[] | undefined,
       headful: args.headful as boolean,

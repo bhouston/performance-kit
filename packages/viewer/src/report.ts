@@ -64,7 +64,8 @@ export function chartScale(max: number) {
   const step = [5, 10, 25, 50, 100].map((v) => v * factor).find((v) => 4 * v >= max) ?? 100 * factor;
   return { max: 4 * step, ticks: [0, 1, 2, 3, 4].map((v) => v * step) };
 }
-// Length prefixes keep renderer/scene pairs unique even when IDs contain separators.
+// Length prefixes keep renderer/scene pairs unique even when IDs contain separators. Results are
+// unique within one machine; the selected machine is carried separately in the route.
 export function resultId(result: ProcessedResult): string {
   return `${result.entry.renderer.id.length}-${result.entry.renderer.id}-${result.entry.scene.id}`;
 }
@@ -75,6 +76,7 @@ export function readRoute(url: URL) {
     direction: url.searchParams.get('dir') === 'worstFirst' ? ('worstFirst' as const) : ('bestFirst' as const),
     result: url.searchParams.get('result'),
     query: url.searchParams.get('q') ?? '',
+    machine: url.searchParams.get('machine') ?? '',
     renderer: url.searchParams.get('renderer') ?? '',
     scene: url.searchParams.get('scene') ?? '',
   };

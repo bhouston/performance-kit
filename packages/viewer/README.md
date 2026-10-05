@@ -4,19 +4,21 @@ This React/Vite application displays processed performance results. It uses the 
 
 Build it with `pnpm --filter @performance-kit/viewer build`; the CLI copies `dist/` into generated report sites. Serve the report over HTTP.
 
-Results use the flat layout `results/<renderer.id>/<scene.id>/`: `metrics.json` is saved directly after measurement, and `screenshot.avif` stores the end-of-run capture. Both development and static reports use the same metrics-only layout.
+Results use the layout `results/<machine.id>/<renderer.id>/<scene.id>/`: `metrics.json` is saved directly after measurement, and `screenshot.avif` stores the end-of-run capture. Both development and static reports use the same metrics-only layout.
 
 `index.json` contains compact references:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "machines": [{ "id": "macbookairm3", "name": "MacBook Air M3" }],
   "results": [
     {
+      "machine": { "id": "macbookairm3", "name": "MacBook Air M3" },
       "renderer": { "id": "three-base", "name": "Three-Base" },
       "scene": { "id": "cornell", "name": "Cornell box" },
-      "metrics": "three-base/cornell/metrics.json",
-      "screenshot": "three-base/cornell/screenshot.avif"
+      "metrics": "macbookairm3/three-base/cornell/metrics.json",
+      "screenshot": "macbookairm3/three-base/cornell/screenshot.avif"
     }
   ]
 }
@@ -24,14 +26,14 @@ Results use the flat layout `results/<renderer.id>/<scene.id>/`: `metrics.json` 
 
 The viewer fetches the index, referenced metrics and screenshots, and an optional `README.md`. Metrics contain exact summary statistics, consecutive elapsed frame timestamps, aligned CPU/GPU costs, selected extrema indices, startup phases and blocks. All time measurements in schema v3 use seconds, including resource timings and network latency. Phases and blocks store `start` plus `duration`; the viewer computes their end. Unused message logs and script attribution are omitted. Regenerate older reports; there is no legacy reader. The framerate histogram is calculated from exact measured intervals; the responsiveness histogram uses consecutive init watchdog ticks minus its 16 ms period. Bins are never persisted.
 
-Search, sorting and renderer/scene filters live in the top navigation. Every visible card timeline share the duration of the longest currently filtered timeline. Hover over a line chart to see the elapsed time and nearest frame's frame interval. The Init phases table shows each startup phase's total duration and total client init time. Clock synchronization and discrepancy tables are removed. Typical and Tail use the precomputed exact median/p95 FPS. CLI comparisons read metrics directly.
+Search, sorting and renderer/scene filters live in the top navigation. When more than one machine has results, a **Machines** selector appears there too; cards, filters and sorting cover only the selected machine, which defaults to the machine with the most results. Every visible card timeline share the duration of the longest currently filtered timeline. Hover over a line chart to see the elapsed time and nearest frame's frame interval. The Init phases table shows each startup phase's total duration and total client init time. Clock synchronization and discrepancy tables are removed. Typical and Tail use the precomputed exact median/p95 FPS. CLI comparisons read metrics directly.
 
-`performance-kit dev --out results/` always watches the results folder. Its index advertises `liveReload: true`, automatically connecting the viewer to Server-Sent Events. A `resultChanged` event includes `rendererId` and `sceneId`; the viewer fetches only that pair’s `metrics.json`, updates its capture and briefly highlights the affected card. A 404 removes that pair. A `readmeChanged` event refreshes only the introduction. Initial/reconnected `indexChanged` events refresh the full lightweight snapshot to recover missed changes. Reduced-motion preferences disable highlight animation.
+`performance-kit dev --out results/` always watches the results folder. Its index advertises `liveReload: true`, automatically connecting the viewer to Server-Sent Events. A `resultChanged` event includes `machineId`, `rendererId` and `sceneId`; the viewer fetches only that result’s `metrics.json`, updates its capture and briefly highlights the affected card. A 404 removes that pair. A `readmeChanged` event refreshes only the introduction. Initial/reconnected `indexChanged` events refresh the full lightweight snapshot to recover missed changes. Reduced-motion preferences disable highlight animation.
 
 `performance-kit serve` and static reports never subscribe or offer a live toggle. Optional README Markdown is rendered without enabling raw HTML. Missing README files hide the introduction.
 
 Results are cards with four headline metrics. Use **Sort cards** and **Sort direction**
-for best-first or worst-first ordering. Sorting, search and renderer/scene filters
+for best-first or worst-first ordering. Sorting, search and machine/renderer/scene filters
 are kept in the URL. Click a card to open `?result=<id>`; the **Performance results** breadcrumb (or browser
 Back) returns to the list and restores its position. Hover/focus the name to copy
 its bookmark link. Touch devices always show the bookmark control.

@@ -17,7 +17,8 @@ it('serves isolation headers, index and live reader assets', async () => {
     expect(response.headers.get('cross-origin-opener-policy')).toBe('same-origin');
     expect(response.headers.get('cross-origin-embedder-policy')).toBe('require-corp');
     expect(await (await fetch(server.url + '/index.json')).json()).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
+      machines: [],
       results: [],
     });
     const introduction = await fetch(server.url + '/README.md');
@@ -39,7 +40,7 @@ async function subscribe(url: string) {
   const controller = new AbortController();
   const response = await fetch(`${url}/events`, { signal: controller.signal });
   const reader = response.body!.getReader();
-  const events: { type: string; rendererId?: string; sceneId?: string }[] = [];
+  const events: { type: string; machineId?: string; rendererId?: string; sceneId?: string }[] = [];
   let ended = false;
   const task = (async () => {
     let text = '';
@@ -90,7 +91,7 @@ it('static serve disables watch metadata and SSE even after result edits', async
 });
 it('dev coalesces atomic writes, handles added/removed results and README, and closes pending watches', async () => {
   const root = await mkdtemp(join(tmpdir(), 'performance-watch-'));
-  const directory = join(root, 'test', 'cube');
+  const directory = join(root, 'mac', 'test', 'cube');
   await mkdir(directory, { recursive: true });
   const server = await startServer({ out: root, viewer: root, port: 0, watchResults: true });
   const stream = await subscribe(server.url);
@@ -123,10 +124,10 @@ it('dev coalesces atomic writes, handles added/removed results and README, and c
     await vi.waitFor(() => expect(stream.events).toHaveLength(3), { timeout: 3000 });
     expect(stream.events.slice(1)).toEqual([
       { type: 'readmeChanged' },
-      { type: 'resultChanged', rendererId: 'test', sceneId: 'cube' },
+      { type: 'resultChanged', machineId: 'mac', rendererId: 'test', sceneId: 'cube' },
     ]);
     expect((await (await fetch(`${server.url}/index.json`)).json()).results).toHaveLength(1);
-    expect((await (await fetch(`${server.url}/test/cube/metrics.json`)).json()).runId).toBe('test');
+    expect((await (await fetch(`${server.url}/mac/test/cube/metrics.json`)).json()).runId).toBe('test');
     // A partial metrics write must remain silent until a complete result is published.
     await writeFile(join(directory, 'metrics.json'), '{');
     await new Promise((resolve) => setTimeout(resolve, 800));
@@ -137,7 +138,7 @@ it('dev coalesces atomic writes, handles added/removed results and README, and c
         expect(stream.events.some((event) => event.type === 'resultChanged') && stream.events.length > 3).toBe(true),
       { timeout: 3000 },
     );
-    expect((await (await fetch(`${server.url}/test/cube/metrics.json`)).json()).runId).toBe('updated');
+    expect((await (await fetch(`${server.url}/mac/test/cube/metrics.json`)).json()).runId).toBe('updated');
     await new Promise((resolve) => setTimeout(resolve, 800));
     const beforeDeletion = stream.events.length;
     await rm(join(directory, 'metrics.json'));
@@ -145,9 +146,9 @@ it('dev coalesces atomic writes, handles added/removed results and README, and c
     await vi.waitFor(() => expect(stream.events).toHaveLength(beforeDeletion + 2), { timeout: 3000 });
     expect(stream.events.slice(beforeDeletion)).toEqual([
       { type: 'readmeChanged' },
-      { type: 'resultChanged', rendererId: 'test', sceneId: 'cube' },
+      { type: 'resultChanged', machineId: 'mac', rendererId: 'test', sceneId: 'cube' },
     ]);
-    expect((await fetch(`${server.url}/test/cube/metrics.json`)).status).toBe(404);
+    expect((await fetch(`${server.url}/mac/test/cube/metrics.json`)).status).toBe(404);
     expect((await (await fetch(`${server.url}/index.json`)).json()).results).toHaveLength(0);
     const imported = await mkdtemp(join(tmpdir(), 'performance-import-'));
     await mkdir(join(imported, 'cube'));
@@ -155,11 +156,11 @@ it('dev coalesces atomic writes, handles added/removed results and README, and c
       join(imported, 'cube', 'metrics.json'),
       JSON.stringify({ ...result, entry: { ...result.entry, renderer: { id: 'imported', name: 'Imported' } } }),
     );
-    await rename(imported, join(root, 'imported'));
+    await rename(imported, join(root, 'mac', 'imported'));
     await vi.waitFor(() => expect(stream.events.at(-1)?.type).toBe('indexChanged'), { timeout: 3000 });
     expect((await (await fetch(`${server.url}/index.json`)).json()).results).toHaveLength(1);
     const beforeRemoval = stream.events.length;
-    await rm(join(root, 'imported'), { recursive: true });
+    await rm(join(root, 'mac', 'imported'), { recursive: true });
     await vi.waitFor(() => expect(stream.events.length).toBeGreaterThan(beforeRemoval), { timeout: 3000 });
     expect((await (await fetch(`${server.url}/index.json`)).json()).results).toHaveLength(0);
     const beforeClose = stream.events.length;
@@ -182,7 +183,7 @@ it('benchmark live events remain available without enabling filesystem watching'
   const stream = await subscribe(server.url);
   try {
     await vi.waitFor(() => expect(stream.events).toHaveLength(1));
-    server.publish({ type: 'resultChanged', rendererId: 'test', sceneId: 'cube' });
+    server.publish({ type: 'resultChanged', machineId: 'mac', rendererId: 'test', sceneId: 'cube' });
     await vi.waitFor(() => expect(stream.events.at(-1)?.type).toBe('resultChanged'));
     expect(await (await fetch(`${server.url}/index.json`)).json()).toMatchObject({ liveReload: true });
   } finally {

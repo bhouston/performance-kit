@@ -25,6 +25,7 @@ import { percentile } from 'performance-kit-schema';
 import './style.css';
 type Point = [seconds: number, milliseconds: number];
 type ResultReference = {
+  machine: NamedEntity;
   renderer: NamedEntity;
   scene: NamedEntity;
   metrics: string;
@@ -695,6 +696,7 @@ function App() {
     [preamble, setPreamble] = useState(''),
     [query, setQuery] = useState(initial.query),
     [sort, setSort] = useState<SortKey>(initial.sort),
+    [machine, setMachine] = useState(initial.machine),
     [renderer, setRenderer] = useState(initial.renderer),
     [scene, setScene] = useState(initial.scene),
     [live, setLive] = useState(false),
@@ -730,7 +732,7 @@ function App() {
       try {
         const response = await fetch('./index.json', { cache: 'no-store' });
         if (!response.ok) throw new Error(`Unable to load results (${response.status})`);
-        const index = (await response.json()) as { schemaVersion: 1; results: ResultReference[]; liveReload?: boolean };
+        const index = (await response.json()) as { schemaVersion: 2; results: ResultReference[]; liveReload?: boolean };
         const loaded = await Promise.all(
           (index.results ?? []).map(async (item) => {
             const metrics = await fetch(item.metrics, { cache: 'no-store' });
@@ -765,8 +767,14 @@ function App() {
         }
       }
     };
-    const updatePair = async (rendererId: string, sceneId: string, attempt = 0, version?: number) => {
-      const directory = `${encodeURIComponent(rendererId)}/${encodeURIComponent(sceneId)}`;
+    const updateResult = async (
+      machineId: string,
+      rendererId: string,
+      sceneId: string,
+      attempt = 0,
+      version?: number,
+    ) => {
+      const directory = [machineId, rendererId, sceneId].map(encodeURIComponent).join('/');
       const metrics = `${directory}/metrics.json`;
       const request = version ?? (pairRequests.get(metrics) ?? 0) + 1;
       pairRequests.set(metrics, request);
@@ -783,6 +791,7 @@ function App() {
         const result = (await response.json()) as ProcessedResult;
         if (!active || pairRequests.get(metrics) !== request) return;
         const item: RecordItem = {
+          machine: { id: machineId, name: machineId },
           renderer: result.entry.renderer,
           scene: result.entry.scene,
           metrics,
@@ -794,6 +803,8 @@ function App() {
         pairApplied.set(metrics, request);
         setItems((previous) => {
           const other = previous.filter((existing) => existing.metrics !== metrics);
+          // Keep the indexed display name; a machine new to this page is renamed by the next index refresh.
+          item.machine = other.find((existing) => existing.machine.id === machineId)?.machine ?? item.machine;
           return [...other, item];
         });
         setRevisions((previous) => ({ ...previous, [metrics]: performance.now() }));
@@ -802,7 +813,8 @@ function App() {
         if (active && pairRequests.get(metrics) === request) {
           if (attempt < 2)
             retry(() => {
-              if (pairRequests.get(metrics) === request) void updatePair(rendererId, sceneId, attempt + 1, request);
+              if (pairRequests.get(metrics) === request)
+                void updateResult(machineId, rendererId, sceneId, attempt + 1, request);
             });
           else setError(String(failure));
         }
@@ -816,13 +828,19 @@ function App() {
       events.addEventListener('open', () => setCaptureEpoch(performance.now()));
       const receive = (message: MessageEvent<string>) => {
         try {
-          const event = JSON.parse(message.data) as { type?: string; rendererId?: string; sceneId?: string };
+          const event = JSON.parse(message.data) as {
+            type?: string;
+            machineId?: string;
+            rendererId?: string;
+            sceneId?: string;
+          };
           if (
             event.type === 'resultChanged' &&
+            typeof event.machineId === 'string' &&
             typeof event.rendererId === 'string' &&
             typeof event.sceneId === 'string'
           )
-            void updatePair(event.rendererId, event.sceneId);
+            void updateResult(event.machineId, event.rendererId, event.sceneId);
           else if (event.type === 'readmeChanged') void readIntroduction();
           else if (event.type === 'indexChanged') {
             void refresh(seenSnapshotEvent);
@@ -844,13 +862,22 @@ function App() {
       events?.close();
     };
   }, [live]);
+  const machines = [...new Map(items.map((item) => [item.machine.id, item.machine])).values()].toSorted((a, b) =>
+    a.id.localeCompare(b.id),
+  );
+  // An unknown or empty machine selection falls back to the machine with the most results.
+  const resultCounts = Map.groupBy(items, (item) => item.machine.id);
+  const activeMachine =
+    machines.find((item) => item.id === machine) ??
+    machines.toSorted((a, b) => (resultCounts.get(b.id)?.length ?? 0) - (resultCounts.get(a.id)?.length ?? 0))[0];
+  const machineItems = items.filter((item) => item.machine.id === activeMachine?.id);
   const renderers = [
-    ...new Map(items.map((item) => [item.result.entry.renderer.id, item.result.entry.renderer])).values(),
+    ...new Map(machineItems.map((item) => [item.result.entry.renderer.id, item.result.entry.renderer])).values(),
   ].toSorted((a, b) => a.name.localeCompare(b.name));
   const scenes = [
-    ...new Map(items.map((item) => [item.result.entry.scene.id, item.result.entry.scene])).values(),
+    ...new Map(machineItems.map((item) => [item.result.entry.scene.id, item.result.entry.scene])).values(),
   ].toSorted((a, b) => a.name.localeCompare(b.name));
-  const cards = items
+  const cards = machineItems
     .filter((item) => {
       const result = item.result;
       if (
@@ -875,6 +902,7 @@ function App() {
       setSort(route.sort);
       setDirection(route.direction);
       setQuery(route.query);
+      setMachine(route.machine);
       setRenderer(route.renderer);
       setScene(route.scene);
       pendingScroll.current = history.state?.scroll ?? null;
@@ -894,6 +922,7 @@ function App() {
     url.searchParams.set('dir', direction);
     for (const [key, value] of [
       ['q', query],
+      ['machine', machine],
       ['renderer', renderer],
       ['scene', scene],
     ]) {
@@ -901,14 +930,14 @@ function App() {
       else url.searchParams.delete(key!);
     }
     history.replaceState(history.state, '', url);
-  }, [sort, direction, query, renderer, scene]);
+  }, [sort, direction, query, machine, renderer, scene]);
   useEffect(() => {
     if (!selected && items.length) {
       const frame = requestAnimationFrame(scrollList);
       return () => cancelAnimationFrame(frame);
     }
   }, [selected, items, scrollList]);
-  const detailItem = items.find((item) => resultId(item.result) === selected);
+  const detailItem = machineItems.find((item) => resultId(item.result) === selected);
   const maxTime = cards.reduce((longest, item) => Math.max(longest, item.result.timeline.maxTime), 1);
   return (
     <>
@@ -972,6 +1001,20 @@ function App() {
               <option value="bestFirst">Best first</option>
               <option value="worstFirst">Worst first</option>
             </select>
+            {machines.length > 1 && (
+              <select
+                aria-label="Machines"
+                title="Machines"
+                value={activeMachine?.id ?? ''}
+                onChange={(e) => setMachine(e.target.value)}
+              >
+                {machines.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            )}
             <select
               aria-label="Renderers"
               title="Renderers"
@@ -994,7 +1037,7 @@ function App() {
               ))}
             </select>
             <span className="result-count">
-              {cards.length}/{items.length}
+              {cards.length}/{machineItems.length}
             </span>
             <a
               className="repository-link"

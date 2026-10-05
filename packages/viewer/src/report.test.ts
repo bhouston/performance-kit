@@ -88,8 +88,18 @@ it('covers observed values with exactly four nice divisions, including large sta
 });
 it('roundtrips shareable sort, detail and filter URLs and defaults invalid options', () => {
   expect(
-    readRoute(new URL('https://example.test/?result=x&sort=avgFrameRate&dir=worstFirst&q=cube&renderer=a&scene=b')),
-  ).toEqual({ result: 'x', sort: 'avgFrameRate', direction: 'worstFirst', query: 'cube', renderer: 'a', scene: 'b' });
+    readRoute(
+      new URL('https://example.test/?result=x&sort=avgFrameRate&dir=worstFirst&q=cube&machine=m&renderer=a&scene=b'),
+    ),
+  ).toEqual({
+    result: 'x',
+    sort: 'avgFrameRate',
+    direction: 'worstFirst',
+    query: 'cube',
+    machine: 'm',
+    renderer: 'a',
+    scene: 'b',
+  });
   expect(readRoute(new URL('https://example.test/?sort=__proto__&dir=no')).sort).toBe('avgFrameRate');
   expect(readRoute(new URL('https://example.test/'))).toMatchObject({ sort: 'avgFrameRate', direction: 'bestFirst' });
   const a = processRun(run),

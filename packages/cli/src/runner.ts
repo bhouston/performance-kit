@@ -1,7 +1,7 @@
 import { loadReference } from './convergence.js';
 import { mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { cpus, platform, release } from 'node:os';
+import { cpus, hostname, platform, release } from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import puppeteer, { type Browser } from 'puppeteer';
@@ -11,11 +11,15 @@ import type { RunResult, Environment } from 'performance-kit-schema';
 import { configureNetwork, resolveNetworkProfile } from './network.js';
 import { harnessRun } from './harness.js';
 import { chromeFlags, isSoftwareAdapter, scheduleSuite } from './schedule.js';
-import { loadSuite, safeEntryId, writeRun, atomicWrite } from './storage.js';
+import { loadSuite, safeEntryId, writeRun, atomicWrite, writeMachine } from './storage.js';
 import { startServer } from './server.js';
 export interface RunOptions {
   suite: string;
   out: string;
+  /** Results folder for this benchmark machine; defaults to a slug of the host name. */
+  machine?: string;
+  /** Display name saved in `<machine>/machine.json`, such as "MacBook Air M3". */
+  machineName?: string;
   renderer?: string[];
   scene?: string[];
   headful?: boolean;
@@ -47,6 +51,14 @@ export async function deadline<T>(promise: Promise<T>, timeoutMs: number, phase:
     clearTimeout(timer);
   }
 }
+export function defaultMachineId(name = hostname()): string {
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, '-')
+      .replace(/^[^a-z0-9]+|-+$/g, '') || 'local'
+  );
+}
 export async function runSuite(options: RunOptions): Promise<{ out: string; results: RunResult[] }> {
   for (const [name, value] of [
     ['width', options.width],
@@ -64,9 +76,11 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
   if (!schedule.length) throw new Error('No suite entries match the filters');
   for (const { entry } of schedule) safeEntryId(entry.id);
   const out = resolve(options.out);
-  await mkdir(out, { recursive: true });
+  const machineId = safeEntryId(options.machine ?? defaultMachineId());
+  await mkdir(join(out, machineId), { recursive: true });
+  if (options.machineName) await writeMachine(out, { id: machineId, name: options.machineName });
   const flags = chromeFlags(suite.defaults?.vsync ?? 'on');
-  const host = { os: `${platform()} ${release()}`, cpu: cpus()[0]?.model ?? 'unknown' };
+  const host = { os: `${platform()} ${release()}`, cpu: cpus()[0]?.model ?? 'unknown', machineId };
   let gitCommit: string | undefined;
   try {
     gitCommit = (await promisify(execFile)('git-dedup', ['rev-parse', 'HEAD'])).stdout.trim();
@@ -91,7 +105,7 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
         port: options.rendererPort ?? 4401,
         rendererRoot: options.rendererRoot,
       });
-    console.log(`Report: ${server.url}${options.live ? '/live' : ''}\nResults: ${out}`);
+    console.log(`Report: ${server.url}${options.live ? '/live' : ''}\nResults: ${join(out, machineId)}`);
     const launch = async () => {
       browser = await puppeteer.launch({
         headless: !options.headful,
@@ -161,7 +175,7 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
       url.searchParams.set('performanceKitOrigin', new URL(server.url).origin);
       const reference = entry.reference ? await loadReference(entry.reference.image, options.suite) : undefined;
       if (entry.reference && reference) {
-        const file = `${entry.renderer.id}/${entry.scene.id}/reference.png`;
+        const file = `${machineId}/${entry.renderer.id}/${entry.scene.id}/reference.png`;
         await atomicWrite(join(out, file), reference);
         url.searchParams.set(
           'performanceKitReference',
@@ -272,9 +286,9 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
       } as RunResult;
       await page.close();
       if (suite.phaseColors) Object.assign(result.config, { phaseColors: suite.phaseColors });
-      await writeRun(out, result, capture ? Uint8Array.from(capture.bytes) : undefined, reference);
+      await writeRun(out, machineId, result, capture ? Uint8Array.from(capture.bytes) : undefined, reference);
       results.push(result);
-      server.publish({ type: 'resultChanged', rendererId: entry.renderer.id, sceneId: entry.scene.id });
+      server.publish({ type: 'resultChanged', machineId, rendererId: entry.renderer.id, sceneId: entry.scene.id });
       if (i + 1 < schedule.length) await new Promise((done) => setTimeout(done, options.cooldownMs ?? 2000));
     }
   } finally {

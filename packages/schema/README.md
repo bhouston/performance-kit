@@ -15,10 +15,10 @@ The required references use `NamedEntity` (`NamedEntityType`) and `NamedEntitySc
 
 ## Raw data and processed metrics
 
-Each renderer/scene pair has one folder:
+Each renderer/scene pair has one folder per benchmark machine:
 
 ```text
-results/<renderer.id>/<scene.id>/
+results/<machine.id>/<renderer.id>/<scene.id>/
   screenshot.avif
   metrics.json
 ```
