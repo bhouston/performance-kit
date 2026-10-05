@@ -66,4 +66,6 @@ checks (sorting/reload, navigation/back scroll, direct details, bookmarks and
 clipboard, chart labels, mobile layout and dark theme). Set
 `PERFORMANCE_KIT_CHROME_PATH` to use an existing Chrome executable.
 
-Details show Init Responsiveness first, including its histogram, bandwidth and measured phase totals. Its Rendering section is empty. The frame chart follows with rendering statistics and an empty Init phases section. Frame reference lines appear only on frame charts; cards combine frame timing, watchdog lateness and phase shading.
+Cards and details combine setup phases, watchdog lateness, and frame timing in one timeline. A solid phase band makes short setup phases visible above the shaded intervals. Details retain CPU/GPU selection, average/P95 reference lines, rendering and responsiveness histograms, bandwidth, and measured phase totals. Timing and bandwidth axes start at zero elapsed seconds from the first recorded activity; the reporter records navigation directly as the time origin. Any uncovered initialization time is inferred as translucent gray `unknown` blocks and included in phase totals.
+
+The default sort is Average frame rate, Best first: highest average FPS (lowest average frame time). Explicit URL sort and direction selections take precedence.

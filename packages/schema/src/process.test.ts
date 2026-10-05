@@ -24,10 +24,10 @@ function raw(count = 5000): RunResult {
     },
     networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
     config: { durationMs: 60000, vsync: 'on' },
-    harness: { startSent: 1000, teardown: time + 20 },
+    harness: { teardown: time + 20 },
     reporter: {
       hello: 1000,
-      startReceived: 1000,
+      navigationStart: 1000,
       ready: 1005,
       renderStart: 1005,
       runStart: 1010,
@@ -61,7 +61,7 @@ describe('offline raw preprocessing', () => {
     expect(metrics.statistics.tailFps).toBe(1000 / derived.p95!);
     expect(metrics.statistics.intervalCount).toBe(4999);
     expect(metrics.statistics.frameCount).toBe(5000);
-    expect(metrics.statistics.phaseDurations).toEqual({ load: 0.004 });
+    expect(metrics.statistics.phaseDurations).toEqual({ load: 0.004, unknown: 0.005 });
     expect(metrics.statistics.cpuMedian).toBe(0.002);
     expect(metrics.statistics.gpuMedian).toBe(0.003);
     expect(metrics.timeline.frameSeconds).toHaveLength(5000);
@@ -187,11 +187,16 @@ describe('offline raw preprocessing', () => {
     expect(metrics.timeline.runStart).toBe(0.01);
     expect(metrics.timeline.ready).toBe(0.005);
     expect(metrics.timeline.frameSeconds[0]).toBe((input.reporter.frames[0]!.cpuStart - 1000) / 1000);
-    expect(metrics.timeline.phases[0]).toEqual({ phase: 'load', start: 0.005, end: 0.009, durationSeconds: 0.004 });
+    expect(metrics.timeline.phases.find((p) => p.phase === 'load')).toEqual({
+      phase: 'load',
+      start: 0.005,
+      end: 0.009,
+      durationSeconds: 0.004,
+    });
   });
-  it('uses shared rounded timestamps and seconds while retaining exact statistics and negative phase coordinates', () => {
+  it('uses navigation-relative rounded timestamps while retaining exact statistics', () => {
     const input = raw(3);
-    input.reporter.startReceived = 1005;
+    input.reporter.navigationStart = 1000;
     input.reporter.frames = [1015.123456, 1031.790123, 1048.45678].map((cpuStart) => ({
       cpuStart,
       cpuEnd: cpuStart + 2.34567,
@@ -203,12 +208,14 @@ describe('offline raw preprocessing', () => {
     const metrics = processRun(input);
     expect(metrics.timeline.timeUnit).toBe('seconds');
     expect(metrics.timeline.valueUnit).toBe('seconds');
-    expect(metrics.timeline.frameSeconds.slice(0, 2)).toEqual([0.0101, 0.0268]);
+    expect(metrics.timeline.frameSeconds.slice(0, 2)).toEqual([0.0151, 0.0318]);
     expect(metrics.timeline.cpuSeconds[0]).toBe(0.00235);
     expect((metrics.timeline.frameSeconds[1]! - metrics.timeline.frameSeconds[0]!) * 1000).toBeCloseTo(16.7);
-    expect(metrics.timeline.phases[0]?.start).toBe(-0.0002);
-    expect(metrics.timeline.phases[0]?.end).toBe(0.0016);
-    expect(metrics.timeline.phases[0]?.durationSeconds).toBe((1006.5555 - 1004.84321) / 1000);
+    expect(metrics.timeline.phases.find((p) => p.phase === 'load')?.start).toBe(0.0048);
+    expect(metrics.timeline.phases.find((p) => p.phase === 'load')?.end).toBe(0.0066);
+    expect(metrics.timeline.phases.find((p) => p.phase === 'load')?.durationSeconds).toBe(
+      (1006.5555 - 1004.84321) / 1000,
+    );
     expect(metrics.statistics.median).toBe(deriveRun(input).median! / 1000);
     expect(metrics.statistics.median).not.toBe(0.01667);
     expect(metrics.measuredIntervalSeconds).toHaveLength(2);
@@ -230,10 +237,10 @@ describe('offline raw preprocessing', () => {
     expect(processRun(input).timeline.watchdogIndices.length).toBeLessThanOrEqual(512);
     expect(processRun(input).timeline.watchdogIndices.length).toBeGreaterThan(3);
   });
-  it('handles results collected before start is received', () => {
+  it('handles results collected before navigation metadata is available', () => {
     const input = raw(2);
     delete input.reporter.hello;
-    delete input.reporter.startReceived;
+    delete input.reporter.navigationStart;
     delete input.reporter.renderStart;
     delete input.reporter.ready;
     delete input.reporter.phases;
@@ -274,7 +281,8 @@ describe('offline raw preprocessing', () => {
       receivedAt: { clock: 'reporter', t: 1005 + index },
     }));
     const metrics = processRun(input);
-    expect(metrics.timeline.phases).toHaveLength(300);
+    expect(metrics.timeline.phases.filter((phase) => phase.phase === 'load')).toHaveLength(300);
+    expect(metrics.statistics.phaseDurations.unknown).toBe(0.005);
     expect(metrics.timeline.blocks).toHaveLength(256);
     expect(metrics.timeline.blocks[0]?.durationSeconds).toBe(0.005);
     expect(metrics.attribution[0]?.durationSeconds).toBe(0.005);
@@ -322,10 +330,10 @@ describe('extrema-preserving sampling', () => {
     for (const limit of [0, 3, 1001, NaN, 4.5]) expect(() => downsampleExtrema(points, limit)).toThrow('Point limit');
   });
 });
-it('preserves network reports and aligns frame-relative downloads including pre-reporter startup', () => {
+it('preserves network reports aligned with navigation-relative frame timing', () => {
   const run = raw(5);
   run.networkProfile = { name: 'slow-4g', latencyMs: 150, downloadBytesPerSec: 200000, uploadBytesPerSec: 93750 };
-  run.reporter.startReceived = 1000;
+  run.reporter.navigationStart = 900;
   run.reporter.downloads = [
     {
       phase: 'load',
@@ -352,14 +360,14 @@ it('preserves network reports and aligns frame-relative downloads including pre-
   ];
   const result = processRun(run);
   assertProcessedResult(result);
-  expect(result.downloads?.[0]?.timeOrigin).toBe(-100);
+  expect(result.downloads?.[0]?.timeOrigin).toBe(0);
   expect(result.networkProfile).toEqual(run.networkProfile);
   expect(run.reporter.downloads[0]!.timeOrigin).toBe(900);
 });
 
 it('keeps arbitrary duplicate phases, explicit render start and complete-data headline metrics', () => {
   const input = raw(3);
-  input.reporter.startReceived = 1000;
+  input.reporter.navigationStart = 1000;
   input.reporter.ready = 1005;
   input.reporter.renderStart = 1020;
   input.reporter.runStart = 1020;
@@ -373,7 +381,7 @@ it('keeps arbitrary duplicate phases, explicit render start and complete-data he
   ];
   input.config.phaseColors = { assets: '#123456' };
   const result = processRun(input);
-  expect(result.timeline.phases.map((p) => p.phase)).toEqual(['assets', 'assets', '__proto__']);
+  expect(result.timeline.phases.map((p) => p.phase)).toEqual(['assets', 'assets', '__proto__', 'unknown']);
   expect(result.statistics.phaseDurations.assets).toBe(0.02);
   expect(result.statistics.phaseDurations.__proto__).toBe(0.003);
   expect(result.statistics.initSeconds).toBe(0.02); // Overlaps are not added to init time.

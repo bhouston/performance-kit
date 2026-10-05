@@ -1,4 +1,5 @@
 import type { RunResult, ProcessedResult } from './index.js';
+import { uncoveredInitialization } from './initialization.js';
 
 /** Linear interpolation between adjacent sorted observations, with endpoints clamped. */
 export function percentile(values: readonly number[], p: number): number | undefined {
@@ -74,7 +75,7 @@ export function deriveRun(run: RunResult) {
     ...watchdog.filter((p) => p.value >= 50).map((p) => ({ start: p.t - p.value, end: p.t, sources: ['watchdog'] })),
   ]);
   const ready = run.reporter.renderStart;
-  const initStart = run.reporter.startReceived;
+  const initStart = run.reporter.navigationStart;
   const initMs = ready !== undefined && initStart !== undefined ? ready - initStart : undefined;
   const initBlocks =
     initStart === undefined || ready === undefined
@@ -93,12 +94,16 @@ export function deriveRun(run: RunResult) {
     end: p.end?.t,
     durationMs: p.end ? p.end.t - p.start.t : undefined,
   }));
-  const completed = phases.filter((p) => p.end !== undefined);
-  const phaseUnion = mergeBlocks(completed.map((p) => ({ start: p.start, end: p.end!, sources: [p.phase] })));
-  const accounted =
-    initStart === undefined || ready === undefined
-      ? 0
-      : phaseUnion.reduce((sum, p) => sum + Math.max(0, Math.min(p.end, ready) - Math.max(p.start, initStart)), 0);
+  if (initStart !== undefined && ready !== undefined)
+    phases.push(
+      ...uncoveredInitialization(phases, initStart, ready).map((gap) => ({
+        phase: 'unknown',
+        start: gap.start,
+        end: gap.end,
+        durationMs: gap.end - gap.start,
+      })),
+    );
+  phases.sort((a, b) => a.start - b.start);
   return {
     intervals,
     cpu,
@@ -113,7 +118,10 @@ export function deriveRun(run: RunResult) {
     mad,
     fps: median ? 1000 / median : undefined,
     initMs,
-    unaccountedMs: initMs === undefined ? undefined : Math.max(0, initMs - accounted),
+    unaccountedMs:
+      initMs === undefined
+        ? undefined
+        : phases.filter((p) => p.phase === 'unknown').reduce((sum, p) => sum + (p.durationMs ?? 0), 0),
     phases,
     blocks,
     watchdog,

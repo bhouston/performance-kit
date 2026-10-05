@@ -33,25 +33,10 @@ it('preserves inbound arrival order despite reversed validator delays and transf
     activeValidators--;
     if (message.type === 'capture') expect(bytes).toEqual([137, 80, 78, 71]);
   };
+  const commands: string[] = [];
   source.__performanceKitReceive = (message: { type: string; payload: Record<string, unknown> }) => {
     const at = performance.timeOrigin + performance.now();
-    if (message.type === 'start') {
-      emit('phase', { id: 0, phase: 'assets', start: { clock: 'reporter', t: at } });
-      emit('phase', { id: 1, phase: 'assets', start: { clock: 'reporter', t: at } });
-      emit('phase', {
-        id: 1,
-        phase: 'assets',
-        start: { clock: 'reporter', t: at },
-        end: { clock: 'reporter', t: at + 2 },
-      });
-      emit('phase', {
-        id: 0,
-        phase: 'assets',
-        start: { clock: 'reporter', t: at },
-        end: { clock: 'reporter', t: at + 3 },
-      });
-      emit('ready', { at, renderStart: at });
-    }
+    commands.push(message.type);
     if (message.type === 'capture') emit('capture', { at, bytes: Uint8Array.of(137, 80, 78, 71).buffer });
     if (message.type === 'run') {
       emit('environment', { devicePixelRatio: 1 });
@@ -79,8 +64,6 @@ it('preserves inbound arrival order despite reversed validator delays and transf
     const promise = harnessRun({
       runId: 'test',
       url: 'http://127.0.0.1/demo',
-      entryId: 'demo',
-      params: {},
       durationMs: 10,
       initTimeoutMs: 2000,
       capture: true,
@@ -90,8 +73,27 @@ it('preserves inbound arrival order despite reversed validator delays and transf
     });
     emit('hello', { reporterVersion: 'test', capabilities: { gpuTimestamps: false, longTasks: false, loaf: false } });
     emit('environment', { userAgent: 'test' });
+    const at = performance.timeOrigin + performance.now();
+    emit('phase', { id: 0, phase: 'assets', start: { clock: 'reporter', t: at } });
+    emit('phase', { id: 1, phase: 'assets', start: { clock: 'reporter', t: at } });
+    emit('phase', {
+      id: 1,
+      phase: 'assets',
+      start: { clock: 'reporter', t: at },
+      end: { clock: 'reporter', t: at + 2 },
+    });
+    emit('phase', {
+      id: 0,
+      phase: 'assets',
+      start: { clock: 'reporter', t: at },
+      end: { clock: 'reporter', t: at + 3 },
+    });
+    emit('ready', { at, renderStart: at });
+
     const result = await promise;
     expect(result.status).toBe('ok');
+    expect(commands).toEqual(['run', 'capture']);
+    expect(result.harness).not.toHaveProperty('startSent');
     expect(maxActiveValidators).toBe(1);
     expect(validationOrder).toEqual(Array.from({ length: sequence }, (_, index) => index));
     expect(result.capture?.bytes).toEqual([137, 80, 78, 71]);

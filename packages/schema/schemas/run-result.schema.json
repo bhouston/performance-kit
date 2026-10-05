@@ -233,13 +233,9 @@
     "harness": {
       "additionalProperties": false,
       "type": "object",
-      "required": ["startSent", "teardown"],
+      "required": ["teardown"],
       "properties": {
         "iframeCreated": {
-          "minimum": 0,
-          "type": "number"
-        },
-        "startSent": {
           "minimum": 0,
           "type": "number"
         },
@@ -495,7 +491,7 @@
             }
           }
         },
-        "startReceived": {
+        "navigationStart": {
           "minimum": 0,
           "type": "number"
         },

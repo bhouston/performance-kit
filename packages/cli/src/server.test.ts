@@ -109,7 +109,7 @@ it('dev coalesces atomic writes, handles added/removed results and README, and c
       },
       networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
       config: { durationMs: 100, vsync: 'on' },
-      harness: { startSent: 1, teardown: 2 },
+      harness: { teardown: 2 },
       reporter: { frames: [] },
       status: 'ok',
     } as RunResult);

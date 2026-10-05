@@ -27,9 +27,9 @@ try {
       },
       networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
       config: { durationMs: 4000, vsync: 'on', phaseColors: { assets: '#8b5cf6' } },
-      harness: { startSent: 1000, teardown: 6000 },
+      harness: { teardown: 6000 },
       reporter: {
-        startReceived: 1000,
+        navigationStart: 1000,
         ready: 1000 + init,
         renderStart: 1000 + init,
         runStart: 1000 + init,
@@ -92,11 +92,21 @@ try {
   assert.match(page.url(), /result=10-renderer-7-cube/);
   assert.equal(await page.$$('.card').then((nodes) => nodes.length), 0);
   const detailURL = page.url();
-  assert.equal(await page.$eval('.detail h2', (node) => node.textContent), 'Init Responsiveness · lateness in ms');
-  assert.equal(await page.$$eval('.init-detail tbody tr', (nodes) => nodes.length), 2);
-  assert.equal(await page.$eval('.init-detail tbody tr', (node) => node.textContent.replace(/\s/g, '')), 'assets800ms');
-  assert.equal(await page.$eval('.init-detail section', (node) => node.textContent), 'Rendering');
-  assert.equal(await page.$eval('.frame-detail section:last-child', (node) => node.textContent), 'Init phases');
+  assert.equal(await page.$eval('.detail h2', (node) => node.textContent), 'Setup and frame timing · ms');
+  assert.equal(await page.$$eval('.detail canvas.timeline', (nodes) => nodes.length), 1);
+  assert.equal(await page.$$eval('.detail .detail-grid tbody tr', (nodes) => nodes.length), 2);
+  assert.equal(
+    await page.$eval('.detail .detail-grid tbody tr', (node) => node.textContent.replace(/\s/g, '')),
+    'assets800ms',
+  );
+  assert.equal(
+    await page.$eval('.detail .detail-grid section:first-child h3', (node) => node.textContent),
+    'Rendering Histogram',
+  );
+  assert.equal(
+    await page.$eval('.detail .detail-grid section:nth-child(2) h3', (node) => node.textContent),
+    'Responsiveness Histogram',
+  );
   assert.equal(
     await page.$eval('[aria-label="Breadcrumb"] [aria-current="page"]', (node) => node.textContent),
     'Renderer 7 · Cube',

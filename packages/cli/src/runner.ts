@@ -154,12 +154,12 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
       });
       const url = new URL(entry.url, rendererServer?.url ?? server.url);
       url.searchParams.set('performanceKitRunId', runId);
+      url.searchParams.set('performanceKitEntryId', entry.id);
+      url.searchParams.set('performanceKitParams', JSON.stringify(entry.params ?? {}));
       url.searchParams.set('performanceKitOrigin', new URL(server.url).origin);
       const input = {
         runId,
         url: url.href,
-        entryId: entry.id,
-        params: entry.params ?? {},
         durationMs: entry.durationMs,
         initTimeoutMs: suite.defaults?.initTimeoutMs ?? 60000,
         capture: suite.defaults?.capture ?? true,
@@ -207,7 +207,7 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
       } catch (error) {
         const timestamp = Date.now();
         payload = {
-          harness: { iframeCreated: timestamp, startSent: timestamp, teardown: timestamp },
+          harness: { iframeCreated: timestamp, teardown: timestamp },
           reporter: { frames: [] },
           messages: [],
           environment: {},

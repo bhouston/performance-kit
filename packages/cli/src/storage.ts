@@ -154,7 +154,7 @@ export async function writeRun(root: string, result: RunResult, png?: Uint8Array
   const file = join(folder, 'metrics.json');
   const metrics = processRun(result);
   assertProcessedResult(metrics);
-  await atomicWrite(file, JSON.stringify(metrics));
+  await atomicWrite(file, `${JSON.stringify(metrics, null, 2)}\n`);
   await processResult(root, result.entry.renderer.id, result.entry.scene.id);
   return file;
 }

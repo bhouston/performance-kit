@@ -113,22 +113,22 @@ Static reports work on ordinary HTTP hosting, including a subdirectory. Serve th
 
 ## Instrument a renderer
 
-The reporter is a no-op outside an authorized harness. Register init and capture handlers, then bracket each frame:
+The reporter is a no-op outside an authorized harness. Initialize immediately on page load, register a capture handler, then bracket each frame. Workload parameters arrive in the navigation URL and are available as `reporter.params`; there is no setup start command. The reporter opens the first `load` phase at `performance.timeOrigin`, so it includes HTML and JavaScript loading:
 
 ```ts
 import { createReporter } from 'performance-kit-reporter';
 
 const reporter = createReporter();
-reporter.onStart(async ({ params }) => {
-  reporter.phaseStart('load');
-  await loadAssets(params);
+async function initialize() {
+  await loadAssets(reporter.params);
   reporter.phaseEnd('load');
   reporter.phaseStart('compile');
   await compilePipelines();
   reporter.phaseEnd('compile');
   reporter.ready();
   requestAnimationFrame(render);
-});
+}
+void initialize().catch((error) => reporter.fail(error));
 reporter.onCapture(async () => {
   await renderAndFinish();
   return canvas;
@@ -153,7 +153,7 @@ Cards summarize median FPS, tail latency, jitter, and init time. FPS is the reci
 
 Frame pacing uses consecutive frame-start differences inside the measured window. CPU submit time and GPU cost appear separately. Percentiles use linear interpolation at `(n − 1) p`; jitter is p75 − p25, and MAD is available in run details. Statistics use every measured raw sample before display series are reduced.
 
-Timeline axes use elapsed seconds from the client start receipt. Every visible card timeline uses the longest timeline among the current filtered cards as its shared horizontal scale. Hovering a line chart shows elapsed time and the nearest frame's frame interval. Details include viewer-calculated framerate and init watchdog responsiveness histograms, plus a Phases table with startup phase durations and total client init time.
+Timeline axes use elapsed seconds from example navigation. Initialization ends at `ready()`; the harness then requests the measured frame run. Uncovered time before readiness is inferred automatically as `unknown` phases, including gaps between named phases. Every visible card timeline uses the longest timeline among the current filtered cards as its shared horizontal scale. Hovering a line chart shows elapsed time and the nearest frame's frame interval. Details include viewer-calculated framerate and init watchdog responsiveness histograms, plus a Phases table with startup phase durations and total client init time.
 
 Metrics store consecutive `frameSeconds`, aligned `cpuSeconds` and `gpuSeconds`, and selected extrema indices for display. Exact measured `measuredIntervalSeconds` support CLI comparisons and browser histogram calculations without relying on rounded display timestamps. All durations use seconds; FPS remains frames per second. No histogram bins are stored on disk.
 

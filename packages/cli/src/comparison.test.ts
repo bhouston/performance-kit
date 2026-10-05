@@ -14,7 +14,7 @@ function run(id: string, scene: string, renderer: string, interval: number): Pro
     },
     networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
     config: { durationMs: 100, vsync: 'on' },
-    harness: { startSent: 1000, teardown: 1200 },
+    harness: { teardown: 1200 },
     reporter: {
       runStart: 1000,
       runEnd: 1200,

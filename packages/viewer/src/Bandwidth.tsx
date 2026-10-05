@@ -2,7 +2,7 @@ import { bandwidthChartData, type ProcessedResult } from 'performance-kit-schema
 import { useEffect, useRef, useState } from 'react';
 import { humanizeBytes } from 'humanize-units';
 const bytes = humanizeBytes;
-export function Bandwidth({ result, maxTime, minTime }: { result: ProcessedResult; maxTime: number; minTime: number }) {
+export function Bandwidth({ result, maxTime }: { result: ProcessedResult; maxTime: number }) {
   const ref = useRef<SVGSVGElement>(null);
   const [width, setWidth] = useState(1000);
   const visible = result.downloads !== undefined;
@@ -22,7 +22,7 @@ export function Bandwidth({ result, maxTime, minTime }: { result: ProcessedResul
   const end = resources.reduce((max, r) => Math.max(max, r.responseEnd), 0);
   const data = bandwidthChartData(resources, Math.max(10, Math.ceil(end / 5000 / 10) * 10));
   const height = 220;
-  const x = (ms: number) => 44 + (((ms + origin) / 1000 - minTime) / (maxTime - minTime)) * (width - 182);
+  const x = (ms: number) => 44 + ((ms + origin) / 1000 / maxTime) * (width - 182);
   const y = (rate: number) => height - 28 - (rate / (data.peakBytesPerMs || 1)) * (height - 42);
   const paths = new Map<number, string>();
   for (const slice of data.slices) {
@@ -43,7 +43,6 @@ export function Bandwidth({ result, maxTime, minTime }: { result: ProcessedResul
         {bytes(total)} known transfer · peak {bytes(data.peakBytesPerMs * 1000)}/s · {unknown} requests with hidden
         sizes
       </p>
-      <p>Estimated uniform byte arrival. Worker fetches are outside this frame’s timing timeline.</p>
       <svg
         ref={ref}
         viewBox={`0 0 ${width} ${height}`}
@@ -60,8 +59,8 @@ export function Bandwidth({ result, maxTime, minTime }: { result: ProcessedResul
             <rect x="44" y="10" width={Math.max(1, width - 182)} height={height - 38} />
           </clipPath>
         </defs>
-        {Array.from({ length: Math.floor(maxTime) - Math.ceil(minTime) + 1 }, (_, index) => {
-          const second = index + Math.ceil(minTime);
+        {Array.from({ length: Math.floor(maxTime) + 1 }, (_, index) => {
+          const second = index;
           return (
             <g key={second}>
               <line

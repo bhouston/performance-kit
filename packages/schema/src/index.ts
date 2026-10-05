@@ -174,7 +174,6 @@ export const RunResultSchema = Type.Object(
     environment: Type.Optional(EnvironmentSchema),
     harness: object({
       iframeCreated: Type.Optional(time),
-      startSent: time,
       runSent: Type.Optional(time),
       runEndObserved: Type.Optional(time),
       captureSent: Type.Optional(time),
@@ -183,7 +182,7 @@ export const RunResultSchema = Type.Object(
     messages: Type.Optional(Type.Array(MessageLogItemSchema)),
     reporter: object({
       downloads: Type.Optional(Type.Array(DownloadReportSchema)),
-      startReceived: Type.Optional(time),
+      navigationStart: Type.Optional(time),
       hello: Type.Optional(time),
       phases: Type.Optional(Type.Array(PhaseMarkSchema)),
       ready: Type.Optional(time),
@@ -284,7 +283,6 @@ export const ProcessedResultSchema = Type.Object(
       timeUnit: Type.Literal('epochSeconds'),
       harness: object({
         iframeCreated: optionalNumber,
-        startSent: displayNumber,
         runSent: optionalNumber,
         runEndObserved: optionalNumber,
         captureSent: optionalNumber,
@@ -292,7 +290,7 @@ export const ProcessedResultSchema = Type.Object(
       }),
       reporter: object({
         hello: optionalNumber,
-        startReceived: optionalNumber,
+        navigationStart: optionalNumber,
         ready: optionalNumber,
         renderStart: optionalNumber,
         runStart: optionalNumber,
@@ -341,13 +339,6 @@ const envelope = <T extends string, P extends TSchema>(type: T, payload: P) =>
   });
 export const protocolSchemas = {
   downloadReport: envelope('download-report', DownloadReportSchema),
-  start: envelope(
-    'start',
-    object({
-      entryId: Type.String(),
-      params: Type.Record(Type.String(), Type.Unknown()),
-    }),
-  ),
   captureRequest: envelope('capture', object({ mimeType: Type.Literal('image/png') })),
   run: envelope('run', object({ durationMs: positive })),
   abort: envelope('abort', object({ reason: Type.String() })),
@@ -355,6 +346,7 @@ export const protocolSchemas = {
     'hello',
     object({
       reporterVersion: Type.String(),
+      navigationStart: Type.Optional(time),
       capabilities: object({
         gpuTimestamps: Type.Boolean(),
         longTasks: Type.Boolean(),
@@ -368,7 +360,7 @@ export const protocolSchemas = {
   runEnd: envelope(
     'runEnd',
     object({
-      startReceived: Type.Optional(time),
+      navigationStart: Type.Optional(time),
       runStart: Type.Optional(time),
       renderStart: Type.Optional(time),
       runEnd: time,
@@ -390,7 +382,6 @@ export const protocolSchemas = {
   progress: envelope('progress', object({ at: time, frameCount: Type.Integer({ minimum: 0 }) })),
 };
 export const MessageToReporterSchema = Type.Union([
-  protocolSchemas.start,
   protocolSchemas.captureRequest,
   protocolSchemas.run,
   protocolSchemas.abort,
@@ -516,3 +507,5 @@ export * from './colorScales.js';
 export * from './process.js';
 
 export * from './bandwidth.js';
+
+export { uncoveredInitialization } from './initialization.js';

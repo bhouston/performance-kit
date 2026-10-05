@@ -41,7 +41,7 @@ const select = (points: Point[], limit = MAX_TIMELINE_POINTS) =>
 /** All statistics use complete measured raw data; only display indices are reduced. */
 export function processRun(run: RunResult): ProcessedResult {
   const full = deriveRun(run);
-  const reporterOrigin = run.reporter.startReceived ?? 0;
+  const reporterOrigin = run.reporter.navigationStart ?? 0;
   const local = (stamp: number) => seconds(stamp - reporterOrigin);
   const eligible =
     run.status !== 'ok' && run.reporter.runStart === undefined
@@ -236,7 +236,7 @@ export function processRun(run: RunResult): ProcessedResult {
         Object.entries(run.harness).map(([key, value]) => [key, value / 1000]),
       ) as ProcessedResult['timing']['harness'],
       reporter: Object.fromEntries(
-        ['hello', 'startReceived', 'ready', 'renderStart', 'runStart', 'runEnd'].flatMap((key) => {
+        ['hello', 'navigationStart', 'ready', 'renderStart', 'runStart', 'runEnd'].flatMap((key) => {
           const value = run.reporter[key as keyof typeof run.reporter];
           return typeof value === 'number' ? [[key, value / 1000]] : [];
         }),
