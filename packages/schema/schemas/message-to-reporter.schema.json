@@ -64,48 +64,6 @@
           "type": "integer"
         },
         "type": {
-          "const": "run",
-          "type": "string"
-        },
-        "sentAt": {
-          "minimum": 0,
-          "type": "number"
-        },
-        "payload": {
-          "additionalProperties": false,
-          "type": "object",
-          "required": ["durationMs"],
-          "properties": {
-            "durationMs": {
-              "exclusiveMinimum": 0,
-              "type": "number"
-            }
-          }
-        }
-      }
-    },
-    {
-      "additionalProperties": false,
-      "type": "object",
-      "required": ["protocol", "protocolVersion", "runId", "seq", "type", "sentAt", "payload"],
-      "properties": {
-        "protocol": {
-          "const": "performance-kit",
-          "type": "string"
-        },
-        "protocolVersion": {
-          "const": 1,
-          "type": "number"
-        },
-        "runId": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "seq": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "type": {
           "const": "abort",
           "type": "string"
         },

@@ -96,7 +96,7 @@ function Timeline({
     const times = new Set(timeline.frameIndices.map((i) => timeline.frameTimes[i]));
     return samples.filter(([time]) => times.has(time));
   }, [samples, responsiveness, timeline]);
-  const timeMax = Math.max(maxTime, 0.001);
+  const timeMax = Math.max(timeline.runEnd ?? maxTime, 0.001);
   useEffect(() => {
     const canvas = ref.current!;
     const draw = () => {
@@ -108,7 +108,7 @@ function Timeline({
       const ctx = canvas.getContext('2d')!;
       ctx.scale(dpr, dpr);
       const left = 44,
-        right = Math.max(left + 1, width - 138),
+        right = Math.max(left + 1, width - 16),
         top = 34,
         bottom = height - 28;
       const x = (t: number) => left + (t / timeMax) * (right - left);
@@ -153,11 +153,11 @@ function Timeline({
         ctx.moveTo(x(t), top);
         ctx.lineTo(x(t), bottom);
         ctx.stroke();
-        ctx.textAlign = 'center';
+        ctx.textAlign = t === 0 ? 'left' : t + 0.5 > timeMax ? 'right' : 'center';
         ctx.fillText(`${t}`, x(t), height - 8);
       }
-      ctx.textAlign = 'left';
-      ctx.fillText('seconds', right + 8, height - 8);
+      ctx.textAlign = 'right';
+      ctx.fillText('seconds', right, height - 30);
       const metricColor = responsiveness ? responsivenessColor : frameTimeColor;
       ctx.lineWidth = 1.5;
       for (let i = 1; i < plot.length; i++) {
@@ -202,9 +202,9 @@ function Timeline({
         let labelY = Math.max(top + 12, y(value) - 4);
         if (previousLabel !== undefined && Math.abs(labelY - previousLabel) < 16) labelY = previousLabel + 16;
         previousLabel = labelY;
-        ctx.fillText(`${label} ${Number(value.toFixed(2))} ms`, right + 8, labelY);
+        ctx.fillText(`${label} ${Number(value.toFixed(2))} ms`, right - 8, labelY);
         if (label === 'average' && kind === 'intervals' && value > 0)
-          ctx.fillText(`${(1000 / value).toFixed(1)} fps`, right + 8, labelY - 14);
+          ctx.fillText(`${(1000 / value).toFixed(1)} fps`, right - 8, labelY - 14);
       }
       const renderStart = timeline.renderStart;
       if ((responsiveness || combined) && renderStart !== undefined) {
@@ -216,11 +216,9 @@ function Timeline({
         ctx.lineTo(x(renderStart), bottom);
         ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillText(
-          `init done ${Number((renderStart * 1000).toFixed(1))} ms`,
-          Math.min(x(renderStart) + 4, width - 180),
-          18,
-        );
+        ctx.textAlign = 'left';
+        const label = `init done ${Number((renderStart * 1000).toFixed(1))} ms`;
+        ctx.fillText(label, Math.max(left, Math.min(x(renderStart) + 4, right - ctx.measureText(label).width)), 18);
       }
       if (hover) {
         ctx.strokeStyle = color('--foreground');
@@ -256,8 +254,8 @@ function Timeline({
         onMouseMove={(event) => {
           const rect = event.currentTarget.getBoundingClientRect(),
             px = event.clientX - rect.left;
-          const time = ((px - 44) / (rect.width - 182)) * timeMax;
-          if (px < 44 || px > rect.width - 138) {
+          const time = ((px - 44) / (rect.width - 60)) * timeMax;
+          if (px < 44 || px > rect.width - 16) {
             setHover(undefined);
             return;
           }
@@ -344,7 +342,7 @@ function Histogram({ values, responsiveness = false }: { values: number[]; respo
 function Detail({ result }: { result: ProcessedResult }) {
   const [kind, setKind] = useState<'intervals' | 'cpu' | 'gpu'>('intervals');
   const { statistics, timeline } = result;
-  const maxTime = Math.max(1, timeline.maxTime);
+  const maxTime = Math.max(0.001, timeline.runEnd ?? timeline.maxTime);
   const lateness = timeline.watchdogTimes
     .slice(1)
     .map((time, index) => Math.max(0, time - timeline.watchdogTimes[index]! - timeline.watchdogPeriod));
@@ -359,7 +357,7 @@ function Detail({ result }: { result: ProcessedResult }) {
         </select>
       </div>
       <Timeline result={result} maxTime={maxTime} kind={kind} combined />
-      <p>Elapsed seconds from example navigation · shaded blocks: setup phases · thin line: watchdog lateness</p>
+      <p>Elapsed seconds from reporter start · shaded blocks: setup phases · thin line: watchdog lateness</p>
       <div className="detail-grid">
         <section>
           <h3>Rendering Histogram</h3>

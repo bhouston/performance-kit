@@ -34,33 +34,36 @@ const run: RunResult = {
   },
   networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
   config: { durationMs: 100, vsync: 'on' },
-  harness: { iframeCreated: 990, teardown: 7500 },
+  harness: { iframeCreated: 0, teardown: 6.5 },
   status: 'ok',
   reporter: {
-    navigationStart: 1000,
-    renderStart: 7300,
-    ready: 7300,
-    runStart: 7300,
-    runEnd: 7400,
-    frames: [7300, 7320, 7340].map((cpuStart) => ({ cpuStart, cpuEnd: cpuStart + 1 })),
+    navigationStart: 0,
+    renderStart: 6.3,
+    ready: 6.3,
+    runStart: 6.3,
+    runEnd: 6.4,
+    frames: [6.3, 6.32, 6.34].map((cpuStart) => ({ cpuStart, cpuEnd: cpuStart + 0.001 })),
     phases: [
-      { id: 0, phase: 'load', start: { clock: 'reporter', t: 1000 }, end: { clock: 'reporter', t: 7100 } },
-      { id: 1, phase: 'compile', start: { clock: 'reporter', t: 7200 }, end: { clock: 'reporter', t: 7250 } },
+      { id: 0, phase: 'load', start: { clock: 'reporter', t: 0 }, end: { clock: 'reporter', t: 6.1 } },
+      { id: 1, phase: 'compile', start: { clock: 'reporter', t: 6.2 }, end: { clock: 'reporter', t: 6.25 } },
     ],
   },
 };
-it('includes page and script startup in initialization, retaining exact frame statistics', () => {
+it('includes recorded startup in initialization, retaining exact frame statistics', () => {
   const result = processRun(run);
   assertProcessedResult(result);
-  expect(result.timeline.phases).toEqual([
-    { phase: 'load', start: 0, duration: 6.1 },
-    { phase: 'unknown', start: 6.1, duration: 0.1 },
-    { phase: 'compile', start: 6.2, duration: 0.05 },
-    { phase: 'unknown', start: 6.25, duration: 0.05 },
+  expect(result.timeline.phases.map(({ phase, start }) => ({ phase, start }))).toEqual([
+    { phase: 'load', start: 0 },
+    { phase: 'unknown', start: 6.1 },
+    { phase: 'compile', start: 6.2 },
+    { phase: 'unknown', start: 6.25 },
   ]);
+  for (const [i, expected] of [6.1, 0.1, 0.05, 0.05].entries())
+    expect(result.timeline.phases[i]!.duration).toBeCloseTo(expected, 10);
   expect(result.statistics.initDuration).toBe(6.3);
-  expect(result.statistics.phaseDurations.unknown).toBe(0.15);
-  expect(result.measuredIntervals).toEqual([0.02, 0.02]);
-  expect(result.timing.reporter.navigationStart).toBe(1);
+  expect(result.statistics.phaseDurations.unknown).toBeCloseTo(0.15);
+  expect(result.measuredIntervals).toHaveLength(2);
+  for (const interval of result.measuredIntervals) expect(interval).toBeCloseTo(0.02, 10);
+  expect(result.timing.reporter.navigationStart).toBe(0);
   expect(result.timing.harness).not.toHaveProperty('startSent');
 });

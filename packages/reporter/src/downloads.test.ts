@@ -26,7 +26,6 @@ it('categorizes query URLs, navigation, wasm and textures and separates hidden s
       resourceRecord(entry({ responseStart: 0, transferSize: 0, decodedBodySize: 0 })),
     ],
     'load',
-    1000,
   );
   expect(report).toMatchObject({
     totalTransferBytes: 40,

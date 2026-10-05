@@ -31,19 +31,17 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
-it('measures first ready frames, records receipts and rejects wrong origins', async () => {
+function fixture(options: Parameters<typeof createReporter>[0] = {}) {
   vi.useFakeTimers();
   const messages: Record<string, any>[] = [];
   let listener: ((event: { source: unknown; origin: string; data: unknown }) => void) | undefined;
-  const parent = {
-    postMessage(message: Record<string, any>) {
-      messages.push(message);
-    },
-  };
+  const parent = { postMessage: (message: Record<string, any>) => messages.push(message) };
+  let elapsed = 100;
+  vi.stubGlobal('performance', { now: () => elapsed, setResourceTimingBufferSize() {}, getEntriesByType: () => [] });
   vi.stubGlobal('window', {
     location: {
       search:
-        '?performanceKitRunId=test&performanceKitOrigin=https%3A%2F%2Fharness.example&performanceKitEntryId=cube&performanceKitParams=%7B%22quality%22%3A2%7D',
+        '?performanceKitRunId=test&performanceKitOrigin=https%3A%2F%2Fharness.example&performanceKitDurationMs=20',
     },
     parent,
     devicePixelRatio: 1,
@@ -54,68 +52,71 @@ it('measures first ready frames, records receipts and rejects wrong origins', as
   });
   vi.stubGlobal('navigator', { userAgent: 'test' });
   vi.stubGlobal('PerformanceObserver', undefined);
-  const reporter = createReporter();
-  expect(reporter.entryId).toBe('cube');
-  expect(reporter.params).toEqual({ quality: 2 });
-  expect(messages[0]?.type).toBe('hello');
-  expect(messages.find((m) => m.type === 'phase')?.payload.start.t).toBe(performance.timeOrigin);
-  reporter.phaseEnd('load');
-  {
-    const outer = reporter.phaseStart('assets');
-    const inner = reporter.phaseStart('assets');
-    reporter.phaseEnd(inner);
-    reporter.phaseEnd(outer);
-    reporter.phaseStart('assets');
-    reporter.phaseEnd('assets');
-    reporter.ready();
-  }
-  await Promise.resolve();
-  let seq = 0;
-  const send = (type: string, payload: unknown, origin = 'https://harness.example') =>
+  const reporter = createReporter(options);
+  const command = (type: string, payload: unknown, origin = 'https://harness.example') =>
     listener?.({
       source: parent,
       origin,
-      data: {
-        protocol: 'performance-kit',
-        protocolVersion: 1,
-        runId: 'test',
-        seq: seq++,
-        sentAt: performance.timeOrigin + performance.now(),
-        type,
-        payload,
-      },
+      data: { protocol: 'performance-kit', protocolVersion: 1, runId: 'test', seq: 0, sentAt: 0, type, payload },
     });
-  const messagesBeforeAttack = messages.length;
-  send('run', { durationMs: 20 }, 'https://attacker.example');
-  expect(messages).toHaveLength(messagesBeforeAttack);
-  seq = 0; // An untrusted sender has its own sequence; it cannot consume the harness sequence.
-  expect(messages.some((message) => message.type === 'syncPong')).toBe(false);
-  await Promise.resolve();
-  const phases = messages.filter((m) => m.type === 'phase').map((m) => m.payload);
-  expect(phases.map((p) => p.id)).toEqual([0, 0, 1, 2, 2, 1, 3, 3]);
-  expect(phases.filter((p) => !p.end).map((p) => p.id)).toEqual([0, 1, 2, 3]);
-  expect(messages.find((m) => m.type === 'ready')?.payload.renderStart).toBeDefined();
-  const first = reporter.frameBegin({ animationTime: 1 });
-  reporter.frameEnd(first);
-  send('run', { durationMs: 20 });
-  const token = reporter.frameBegin({ animationTime: 2 });
-  reporter.frameEnd(token);
-  reporter.frameGpu(token, { gpuStart: '100', gpuEnd: '200' });
-  await vi.advanceTimersByTimeAsync(21);
-  const result = messages.find((message) => message.type === 'runEnd')?.payload;
-  expect(result.frames).toHaveLength(2);
-  expect(result.frames[0].cpuStart).toBeGreaterThanOrEqual(result.runStart);
-  expect(result.navigationStart).toBe(performance.timeOrigin);
-  expect(result).not.toHaveProperty('startReceived');
-  expect(result.frames[1]).toMatchObject({ animationTime: 2, gpuStart: '100', gpuEnd: '200' });
-  expect(result.messages.map((message: { type: string }) => message.type)).toEqual(['run']);
-  seq += 1; // Simulate a dropped harness message.
-  send('run', { durationMs: 20 });
-  expect(messages.filter((message) => message.type === 'error').at(-1)?.payload.message).toContain(
-    'dropped/reordered sequence',
-  );
-  reporter.fail(new Error('render failed'));
-  expect(messages.filter((message) => message.type === 'error').at(-1)?.payload.message).toBe('render failed');
-  expect(reporter.frameBegin()).toBe(-1);
-  expect(messages.filter((message) => message.type === 'runEnd')).toHaveLength(1);
+  return {
+    reporter,
+    messages,
+    command,
+    advance: (ms: number) => {
+      elapsed += ms;
+    },
+  };
+}
+it('buffers all phases and metadata, stops probes and emits one complete seconds-offset report', async () => {
+  const f = fixture();
+  f.advance(10);
+  f.reporter.phaseEnd('load');
+  const outer = f.reporter.phaseStart('assets');
+  const inner = f.reporter.phaseStart('assets');
+  f.advance(10);
+  f.reporter.phaseEnd(inner);
+  f.reporter.phaseEnd(outer);
+  f.reporter.environment({ api: 'webgpu' });
+  expect(f.messages).toEqual([]);
+  f.reporter.ready();
+  expect(f.reporter.running).toBe(true);
+  expect(vi.getTimerCount()).toBe(1); // Only the one end-of-run deadline survives.
+  const token = f.reporter.frameBegin({ animationTime: 2 });
+  f.advance(2);
+  f.reporter.frameEnd(token);
+  f.reporter.frameGpu(token, { gpuStart: '100', gpuEnd: '200' });
+  f.command('abort', { reason: 'attack' }, 'https://attacker.example');
+  await vi.advanceTimersByTimeAsync(19);
+  expect(f.messages).toEqual([]);
+  f.advance(18);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(f.messages).toHaveLength(1);
+  expect(f.reporter.running).toBe(false);
+  const result = f.messages[0]!.payload;
+  expect(f.messages[0]!.type).toBe('runEnd');
+  expect(result.navigationStart).toBe(0);
+  expect(result.runStart).toBe(0.02);
+  expect(result.runEnd).toBe(0.04);
+  expect(result.frames).toEqual([{ cpuStart: 0.02, cpuEnd: 0.022, animationTime: 2, gpuStart: '100', gpuEnd: '200' }]);
+  expect(result.phases.map((p: { id: number }) => p.id)).toEqual([0, 1, 2]);
+  expect(result.phases.every((p: { end?: unknown }) => p.end)).toBe(true);
+  expect(result.environment.api).toBe('webgpu');
+  expect(result.downloads).toHaveLength(2);
+  expect(result.watchdogTicks.every((t: number) => t <= result.runStart)).toBe(true);
+  await vi.advanceTimersByTimeAsync(100);
+  expect(f.messages).toHaveLength(1);
+  f.reporter.dispose();
+});
+it.each(['failure', 'abort', 'dispose', 'overflow'])('never flushes partial measurements on %s', async (reason) => {
+  const f = fixture({ frameCapacity: 1 });
+  f.reporter.ready();
+  f.reporter.frameEnd(f.reporter.frameBegin());
+  if (reason === 'failure') f.reporter.fail(new Error('failed'));
+  if (reason === 'abort') f.command('abort', { reason: 'cancelled' });
+  if (reason === 'dispose') f.reporter.dispose();
+  if (reason === 'overflow') f.reporter.frameBegin();
+  await vi.advanceTimersByTimeAsync(100);
+  expect(f.messages).toEqual([]);
+  expect(f.reporter.frameBegin()).toBe(-1);
 });

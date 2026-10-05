@@ -18,11 +18,10 @@ export function Bandwidth({ result, maxTime }: { result: ProcessedResult; maxTim
   }, [visible]);
   if (!result.downloads) return <p>Download measurement unavailable for this result.</p>;
   const resources = result.downloads.flatMap((report) => report.resources);
-  const origin = result.downloads[0]?.timeOrigin ?? 0;
   const end = resources.reduce((max, r) => Math.max(max, r.responseEnd), 0);
   const data = bandwidthChartData(resources, Math.max(0.01, Math.ceil(end / 5000 / 0.01) * 0.01));
   const height = 220;
-  const x = (time: number) => 44 + ((time + origin) / maxTime) * (width - 182);
+  const x = (time: number) => 44 + (Math.min(time, maxTime) / maxTime) * (width - 60);
   const y = (rate: number) => height - 28 - (rate / (data.peakBytesPerSecond || 1)) * (height - 42);
   const paths = new Map<number, string>();
   for (const slice of data.slices) {
@@ -55,22 +54,21 @@ export function Bandwidth({ result, maxTime }: { result: ProcessedResult; maxTim
         ))}
         <defs>
           <clipPath id={`network-${result.runId}`}>
-            <rect x="44" y="10" width={Math.max(1, width - 182)} height={height - 38} />
+            <rect x="44" y="10" width={Math.max(1, width - 60)} height={height - 38} />
           </clipPath>
         </defs>
         {Array.from({ length: Math.floor(maxTime) + 1 }, (_, index) => {
           const second = index;
           return (
             <g key={second}>
-              <line
-                x1={x(second - origin)}
-                x2={x(second - origin)}
-                y1="10"
-                y2={height - 28}
-                stroke="currentColor"
-                opacity="0.12"
-              />
-              <text x={x(second - origin)} y={height - 8} fill="currentColor" fontSize="10">
+              <line x1={x(second)} x2={x(second)} y1="10" y2={height - 28} stroke="currentColor" opacity="0.12" />
+              <text
+                textAnchor={second + 0.5 > maxTime ? 'end' : 'start'}
+                x={x(second)}
+                y={height - 8}
+                fill="currentColor"
+                fontSize="10"
+              >
                 {second}s
               </text>
             </g>
@@ -101,8 +99,8 @@ export function Bandwidth({ result, maxTime }: { result: ProcessedResult; maxTim
           ))}
           {result.timeline.renderStart !== undefined && (
             <line
-              x1={x(result.timeline.renderStart! - origin)}
-              x2={x(result.timeline.renderStart! - origin)}
+              x1={x(result.timeline.renderStart!)}
+              x2={x(result.timeline.renderStart!)}
               y1="10"
               y2={height - 28}
               stroke="currentColor"
@@ -160,7 +158,7 @@ export function Bandwidth({ result, maxTime }: { result: ProcessedResult; maxTim
                 .map((r, i) => (
                   <tr key={i}>
                     <td style={{ overflowWrap: 'anywhere' }}>{r.url}</td>
-                    <td>{(r.startTime + origin).toFixed(3)}s</td>
+                    <td>{r.startTime.toFixed(3)}s</td>
                     <td>{r.sizeKnown ? `${((r.responseStart - r.startTime) * 1000).toFixed(1)}ms` : 'hidden'}</td>
                     <td>{r.sizeKnown ? `${((r.responseEnd - r.responseStart) * 1000).toFixed(1)}ms` : 'hidden'}</td>
                     <td>{r.sizeKnown ? bytes(r.transferSize) : 'unknown (TAO)'}</td>

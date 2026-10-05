@@ -10,7 +10,8 @@ export async function harnessRun(input: {
   isolation?: 'iframe' | 'page';
 }) {
   // oxlint-disable-next-line unicorn/consistent-function-scoping -- Function is serialized into Chrome.
-  const now = () => performance.timeOrigin + performance.now();
+  const originTime = performance.now();
+  const now = () => (performance.now() - originTime) / 1000;
   type Message = {
     protocol: string;
     protocolVersion: number;
@@ -107,33 +108,12 @@ export async function harnessRun(input: {
         sentAt: { clock: 'reporter', t: message.sentAt },
         receivedAt: { clock: 'harness', t: receivedAt },
       });
-      if (message.type === 'download-report') {
-        reporter.downloads ??= [] as unknown[];
-        (reporter.downloads as unknown[]).push(message.payload);
-      }
-      if (message.type === 'hello') {
-        reporter.hello = message.sentAt;
-        reporter.navigationStart = message.payload.navigationStart;
-      }
-      if (message.type === 'phase') {
-        const phases = reporter.phases as { id: number; phase: string; start: { t: number } }[];
-        const mark = message.payload as (typeof phases)[number];
-        const index = phases.findIndex((p) => p.id === mark.id);
-        if (index === -1) phases.push(mark);
-        else phases[index] = mark;
-      }
-      if (message.type === 'ready') {
-        reporter.ready = message.payload.at;
-        reporter.renderStart = message.payload.renderStart;
-      }
-      if (message.type === 'environment') environment = { ...environment, ...message.payload };
       if (message.type === 'runEnd') {
-        const { messages: receiptLogs, ...measurements } = message.payload;
+        const { environment: reportedEnvironment, ...measurements } = message.payload;
+        environment = reportedEnvironment as Record<string, unknown>;
         Object.assign(reporter, measurements);
-        if (Array.isArray(receiptLogs)) messages.push(...receiptLogs);
         harness.runEndObserved = receivedAt;
       }
-      if (message.type === 'error') throw new Error(String(message.payload.message));
       const item = waiting.get(message.type)?.shift();
       if (item) {
         clearTimeout(item.timer);
@@ -175,9 +155,6 @@ export async function harnessRun(input: {
   let error: { message: string } | undefined;
   let capture: { at: number; bytes: number[] } | undefined;
   try {
-    await wait('hello');
-    await wait('ready');
-    harness.runSent = send('run', { durationMs: input.durationMs });
     await wait('runEnd', input.durationMs + input.initTimeoutMs);
     if (input.capture) {
       harness.captureSent = send('capture', { mimeType: 'image/png' });
@@ -192,10 +169,20 @@ export async function harnessRun(input: {
     status = message.startsWith('Timeout') ? 'timeout' : 'error';
     error = { message };
     send('abort', { reason: message });
-    // Allow the reporter to flush raw partial frames and receipts before removal.
-    await new Promise((done) => setTimeout(done, 200));
+    // All-or-nothing: discard every measurement if completion/capture fails.
+    for (const key of Object.keys(reporter)) delete reporter[key];
+    reporter.frames = [];
+    messages.length = 0;
+    environment = {};
   } finally {
     await inboundQueue;
+    if (status !== 'ok') {
+      for (const key of Object.keys(reporter)) delete reporter[key];
+      reporter.frames = [];
+      messages.length = 0;
+      environment = {};
+      capture = undefined;
+    }
     harness.teardown = now();
     iframe.remove();
     window.removeEventListener('message', listener);

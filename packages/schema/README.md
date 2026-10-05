@@ -25,25 +25,20 @@ results/<renderer.id>/<scene.id>/
 
 `RunResult` is the in-memory collection input to `processRun`, used during collection. Collection performs no clock synchronization.
 
-`ProcessedResult` describes canonical version 2 metrics.json: exact statistics, compact timeline and detail data, and independent harness/client timing context. It stores no raw frame objects, clock sync samples, delivery discrepancies or histogram bins. `screenshot` indicates the fixed screenshot asset. `validateProcessedResult` returns an Ajv boolean; `assertProcessedResult` throws a descriptive validation error.
+`ProcessedResult` describes schema v3 metrics.json with exact statistics and a compact
+timeline. CPU, phase, resource and reporter lifecycle times are seconds from a single
+reporter origin, stored directly without rounding or epoch conversion. Harness times
+use an independent local origin. No clock synchronization or offset estimates exist.
 
-```ts
-import { processRun } from 'performance-kit-schema/process';
-import { assertProcessedResult } from 'performance-kit-schema';
-const metrics = processRun(rawResult);
-assertProcessedResult(metrics);
-```
+`frameTimes` contains every visible frame start; nullable `cpuDurations` and
+`gpuDurations` align with it. `frameIndices` retains up to 1,536 extrema for display.
+`measuredIntervals` contains every positive measured interval for comparisons and
+histograms. Watchdog ticks and blocks describe initialization only.
 
-The CLI processes complete observations in memory and atomically writes metrics.json directly, using two-space JSON indentation and a trailing newline. New runs measure the first ready frames, without warmup or repetitions. Capture occurs after measurement. Only current metrics are read from disk.
+The chart uses `runEnd` as its exact maximum. Uncovered initialization time is
+inferred as `unknown` phases. Phase identities preserve duplicate and overlapping
+names. Block lists retain at most 256 longest intervals; summaries use all data.
 
-All stored durations use seconds. `typicalFps` and `tailFps` are derived from exact median and p95 intervals. `measuredIntervalSeconds` retains every positive measured frame interval at full precision for comparisons and viewer histogram calculations. Its length must match `statistics.intervalCount`.
-
-Timeline coordinates use client-relative seconds from `navigationStart`. Client init time is renderStart minus navigationStart. Every uncovered initialization span is inferred as an `unknown` phase during processing, without manual phase marks. No cross-clock differences are calculated. Phase marks require a current ID and reporter clock; network conditions are required in every result.
-
-`timing.timeUnit` is `epochSeconds`. `timing.harness` retains independent harness stamps; `timing.reporter` retains navigationStart, hello, ready, runStart and runEnd when available. `timing.messages` keeps clock-tagged send/receive stamps for diagnostics without subtracting clocks.
-
-`frameSeconds` retains every consecutive visible frame timestamp, including the final frame. CPU and GPU costs use aligned nullable `cpuSeconds` and `gpuSeconds`. Display times round to 0.1 ms; costs round to 0.01 ms. Exact summaries and measured intervals remain full precision. `frameIndices` selects at most 1,536 extrema across the three series; adjacent timestamps reconstruct actual intervals rather than subtracting decimated samples.
-
-`watchdogSeconds` retains init ticks through ready; `watchdogIndices` selects at most 512 endpoints, and `watchdogPeriodSeconds: 0.016` reconstructs lateness. Timeline and value units are seconds. Phase, block and script coordinates share the client origin; durationSeconds remains exact.
-
-`downsampleExtrema` retains endpoints and chronological bucket extrema. Detail lists retain at most 128 phases, 256 longest blocks and 256 longest script attributions; phase duration totals use the full observation set. Histogram bins are computed in the viewer from exact measured intervals.
+One `runEnd` envelope contains all measurements, phases, downloads and environment.
+The only other reporter envelope is a screenshot response after completion. The
+harness can request a screenshot or abort. Failed runs have no measurement report.

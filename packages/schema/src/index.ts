@@ -15,7 +15,7 @@ export const StampSchema = object({
   t: time,
 });
 export type Stamp = Static<typeof StampSchema>;
-export type EpochMs = number;
+export type SecondsOffset = number;
 export type ClockSource = 'harness' | 'reporter' | 'gpu';
 export const GpuStampSchema = object({ clock: Type.Literal('gpu'), ns });
 export type GpuStamp = Static<typeof GpuStampSchema>;
@@ -79,7 +79,6 @@ export type ResourceRecord = Static<typeof ResourceRecordSchema>;
 export type ResourceCategory = ResourceRecord['category'];
 export const DownloadReportSchema = object({
   phase: Type.Union([Type.Literal('load'), Type.Literal('post-load')]),
-  timeOrigin: Type.Number(),
   totalTransferBytes: time,
   totalDecodedBytes: time,
   byCategory: object(
@@ -174,7 +173,6 @@ export const RunResultSchema = Type.Object(
     environment: Type.Optional(EnvironmentSchema),
     harness: object({
       iframeCreated: Type.Optional(time),
-      runSent: Type.Optional(time),
       runEndObserved: Type.Optional(time),
       captureSent: Type.Optional(time),
       teardown: time,
@@ -183,7 +181,6 @@ export const RunResultSchema = Type.Object(
     reporter: object({
       downloads: Type.Optional(Type.Array(DownloadReportSchema)),
       navigationStart: Type.Optional(time),
-      hello: Type.Optional(time),
       phases: Type.Optional(Type.Array(PhaseMarkSchema)),
       ready: Type.Optional(time),
       renderStart: Type.Optional(time),
@@ -206,8 +203,8 @@ export type RunResult = Static<typeof RunResultSchema>;
 const displayNumber = Type.Number();
 const optionalNumber = Type.Optional(displayNumber);
 /** Persisted metrics: seconds for all times, bytes for sizes, and bytes/second for network rates.
- * Timeline and resource times are navigation-relative; timing contains Unix epoch timestamps.
- * Browser-native milliseconds and GPU nanoseconds stay in the raw protocol only.
+ * Reporter times are seconds from reporter creation; harness times use its own local origin.
+ * GPU hardware timestamps remain nanoseconds and are never clock synchronized.
  */
 export const ProcessedResultSchema = Type.Object(
   {
@@ -287,13 +284,11 @@ export const ProcessedResultSchema = Type.Object(
     timing: object({
       harness: object({
         iframeCreated: optionalNumber,
-        runSent: optionalNumber,
         runEndObserved: optionalNumber,
         captureSent: optionalNumber,
         teardown: displayNumber,
       }),
       reporter: object({
-        hello: optionalNumber,
         navigationStart: optionalNumber,
         ready: optionalNumber,
         renderStart: optionalNumber,
@@ -328,24 +323,8 @@ const envelope = <T extends string, P extends TSchema>(type: T, payload: P) =>
     payload,
   });
 export const protocolSchemas = {
-  downloadReport: envelope('download-report', DownloadReportSchema),
   captureRequest: envelope('capture', object({ mimeType: Type.Literal('image/png') })),
-  run: envelope('run', object({ durationMs: positive })),
   abort: envelope('abort', object({ reason: Type.String() })),
-  hello: envelope(
-    'hello',
-    object({
-      reporterVersion: Type.String(),
-      navigationStart: Type.Optional(time),
-      capabilities: object({
-        gpuTimestamps: Type.Boolean(),
-        longTasks: Type.Boolean(),
-        loaf: Type.Boolean(),
-      }),
-    }),
-  ),
-  phase: envelope('phase', PhaseMarkSchema),
-  ready: envelope('ready', object({ at: time, renderStart: time })),
   captureResponse: envelope('capture', object({ at: time, bytes: Type.Unsafe<ArrayBuffer>({}) })),
   runEnd: envelope(
     'runEnd',
@@ -357,36 +336,15 @@ export const protocolSchemas = {
       frames: Type.Array(FrameRecordSchema),
       blocks: Type.Array(BlockRecordSchema),
       watchdogTicks: Type.Array(time),
-      messages: Type.Optional(Type.Array(MessageLogItemSchema)),
+      phases: Type.Array(PhaseMarkSchema),
+      ready: time,
+      downloads: Type.Array(DownloadReportSchema),
+      environment: Type.Partial(EnvironmentSchema),
     }),
   ),
-  environment: envelope('environment', Type.Partial(EnvironmentSchema)),
-  error: envelope(
-    'error',
-    object({
-      message: Type.String(),
-      stack: Type.Optional(Type.String()),
-      phase: Type.Optional(Type.String()),
-    }),
-  ),
-  progress: envelope('progress', object({ at: time, frameCount: Type.Integer({ minimum: 0 }) })),
 };
-export const MessageToReporterSchema = Type.Union([
-  protocolSchemas.captureRequest,
-  protocolSchemas.run,
-  protocolSchemas.abort,
-]);
-export const MessageToHarnessSchema = Type.Union([
-  protocolSchemas.downloadReport,
-  protocolSchemas.hello,
-  protocolSchemas.phase,
-  protocolSchemas.ready,
-  protocolSchemas.captureResponse,
-  protocolSchemas.runEnd,
-  protocolSchemas.environment,
-  protocolSchemas.error,
-  protocolSchemas.progress,
-]);
+export const MessageToReporterSchema = Type.Union([protocolSchemas.captureRequest, protocolSchemas.abort]);
+export const MessageToHarnessSchema = Type.Union([protocolSchemas.captureResponse, protocolSchemas.runEnd]);
 export type MessageToReporter = Static<typeof MessageToReporterSchema>;
 export type MessageToHarness = Static<typeof MessageToHarnessSchema>;
 const ajv = new Ajv({ allErrors: true, strict: false });

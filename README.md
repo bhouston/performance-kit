@@ -113,7 +113,7 @@ Static reports work on ordinary HTTP hosting, including a subdirectory. Serve th
 
 ## Instrument a renderer
 
-The reporter is a no-op outside an authorized harness. Initialize immediately on page load, register a capture handler, then bracket each frame. Workload parameters arrive in the navigation URL and are available as `reporter.params`; there is no setup start command. The reporter opens the first `load` phase at `performance.timeOrigin`, so it includes HTML and JavaScript loading:
+The reporter is a no-op outside an authorized harness. Initialize immediately on page load, register a capture handler, then bracket each frame. Workload parameters arrive in the navigation URL and are available as `reporter.params`; there is no setup start command. The reporter opens the first `load` phase at reporter creation using a single `performance.now()` origin:
 
 ```ts
 import { createReporter } from 'performance-kit-reporter';
@@ -147,15 +147,15 @@ GPU helpers and the Three adapter are available in the reporter's `gpu` and `thr
 
 ## Measurement and statistics
 
-CPU timestamps are high-resolution epoch milliseconds tagged by domain. GPU values are decimal nanoseconds on a separate clock. Client durations are calculated within the client clock. The metrics timing context retains harness and reporter lifecycle timestamps in epoch seconds. Individual message receipt logs and script attribution are not persisted. There are no synchronization pings, offset/drift estimates or delivery discrepancy tables.
+CPU times are offsets in seconds from a single `performance.now()` origin captured at reporter creation. GPU values are decimal nanoseconds on a separate clock. Client durations are calculated within the client clock. The metrics timing context retains independent harness and reporter lifecycle offsets in seconds. Individual message receipt logs and script attribution are not persisted. There are no synchronization pings, offset/drift estimates or delivery discrepancy tables.
 
 Cards summarize median FPS, tail latency, jitter, and init time. FPS is the reciprocal of the median frame interval. Durations use readable units: short costs appear in milliseconds, while longer init and phase durations appear in seconds.
 
 Frame pacing uses consecutive frame-start differences inside the measured window. CPU submit time and GPU cost appear separately. Percentiles use linear interpolation at `(n − 1) p`; jitter is p75 − p25, and MAD is available in run details. Statistics use every measured raw sample before display series are reduced.
 
-Timeline axes use elapsed seconds from example navigation. Initialization ends at `ready()`; the harness then requests the measured frame run. Uncovered time before readiness is inferred automatically as `unknown` phases, including gaps between named phases. Every visible card timeline uses the longest timeline among the current filtered cards as its shared horizontal scale. Hovering a line chart shows elapsed time and the nearest frame's frame interval. Details include viewer-calculated framerate and init watchdog responsiveness histograms, plus a Phases table with startup phase durations and total client init time.
+Timeline axes use elapsed seconds from reporter creation. Initialization ends at `ready()`, which starts the measured frame run locally. Uncovered time before readiness is inferred automatically as `unknown` phases, including gaps between named phases. Each visible timeline ends at its own frame-rate test completion. Hovering a line chart shows elapsed time and the nearest frame's frame interval. Details include viewer-calculated framerate and init watchdog responsiveness histograms, plus a Phases table with startup phase durations and total client init time.
 
-Metrics store consecutive `frameTimes`, aligned `cpuDurations` and `gpuDurations`, and selected extrema indices for display. Exact measured `measuredIntervals` support CLI comparisons and browser histogram calculations without relying on rounded display timestamps. Schema v3 metrics use seconds for all time values, including resource timings and network latency (`latency`). Intervals store `start` and `duration`; their end is computed when displayed. Time field names do not repeat unit suffixes. Sizes use bytes, network rates use bytes per second, and FPS remains frames per second. Timeline and resource timestamps are navigation-relative; `timing` timestamps are Unix epoch seconds. Browser-native milliseconds and GPU nanoseconds stay inside the raw measurement protocol. No histogram bins are stored on disk.
+Metrics store consecutive `frameTimes`, aligned `cpuDurations` and `gpuDurations`, and selected extrema indices for display. Exact measured `measuredIntervals` support CLI comparisons and browser histogram calculations at full precision. Schema v3 metrics use seconds for all time values, including resource timings and network latency (`latency`). Intervals store `start` and `duration`; their end is computed when displayed. Time field names do not repeat unit suffixes. Sizes use bytes, network rates use bytes per second, and FPS remains frames per second. Timeline, resources and reporter lifecycle times use the same reporter-relative seconds directly. Harness lifecycle times use its own origin; clocks are never subtracted. GPU timestamps remain hardware nanoseconds in memory. No histogram bins are stored on disk.
 
 The CLI computes exact summaries before writing metrics for both static and development reports. Frame-time colors transition green at 16.7 ms, yellow at 33.3 ms, and red at 50 ms; responsiveness transitions at 50, 100, and 300 ms. Run `pnpm cli process --out results` to rebuild the index from current metrics. Only the current metrics format is supported; regenerate older results with a new benchmark run. Use `capture` to control the end-of-run screenshot.
 
@@ -236,3 +236,12 @@ known transfer bytes, including instantaneous responses assigned to one bin.
 Startup requests before the start signal use negative times on the shared
 frame/network time axis. Hidden sizes are listed separately. The CDN proxy is
 outside this release's scope.
+
+The reporter buffers the entire run and emits one `runEnd` report after completion.
+`ready()` starts measurement locally using the URL's `performanceKitDurationMs`.
+No reports or harness commands run during initialization or measurement. Initialization
+watchdogs and observers stop before measurement. Failure, overflow, abort and disposal
+never flush partial data. Screenshot traffic occurs only after the complete report.
+The chart ends at `runEnd`, excluding capture, teardown and unrelated later activity.
+Optional GPU query helpers add readback/polling work and should be excluded when
+investigating frame-rate spikes.

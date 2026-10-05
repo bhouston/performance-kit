@@ -2,7 +2,6 @@ import type { ProcessedResult, RunResult } from './index.js';
 import { deriveRun, percentile, type Point } from './derive.js';
 
 export const MAX_TIMELINE_POINTS = 512;
-const seconds = (milliseconds: number) => Math.round(milliseconds * 10) / 10000;
 const costSeconds = (milliseconds: number) => Math.round(milliseconds * 100) / 100000;
 const duration = (milliseconds: number | undefined) => (milliseconds === undefined ? undefined : milliseconds / 1000);
 /** Keep both endpoints and each time-ordered bucket's extrema without altering statistics. */
@@ -40,8 +39,6 @@ const select = (points: Point[], limit = MAX_TIMELINE_POINTS) =>
 /** All statistics use complete measured raw data; only display indices are reduced. */
 export function processRun(run: RunResult): ProcessedResult {
   const full = deriveRun(run);
-  const reporterOrigin = run.reporter.navigationStart ?? 0;
-  const local = (stamp: number) => seconds(stamp - reporterOrigin);
   const eligible =
     run.status !== 'ok' && run.reporter.runStart === undefined
       ? []
@@ -55,10 +52,8 @@ export function processRun(run: RunResult): ProcessedResult {
       (run.reporter.ready === undefined || frame.cpuStart >= run.reporter.ready) &&
       (run.reporter.runEnd === undefined || frame.cpuStart <= run.reporter.runEnd),
   );
-  const frameTimes = visible.map((frame) => local(frame.cpuStart));
-  const cpuDurations = visible.map((frame) =>
-    frame.cpuEnd >= frame.cpuStart ? costSeconds(frame.cpuEnd - frame.cpuStart) : null,
-  );
+  const frameTimes = visible.map((frame) => frame.cpuStart);
+  const cpuDurations = visible.map((frame) => (frame.cpuEnd >= frame.cpuStart ? frame.cpuEnd - frame.cpuStart : null));
   const gpuDurations = visible.map((frame) => {
     if (frame.gpuStart === undefined || frame.gpuEnd === undefined) return null;
     const value = Number(BigInt(frame.gpuEnd) - BigInt(frame.gpuStart)) / 1e6;
@@ -89,9 +84,9 @@ export function processRun(run: RunResult): ProcessedResult {
   const ticks = (run.reporter.watchdogTicks ?? []).filter(
     (tick) => run.reporter.runEnd === undefined || tick <= run.reporter.runEnd,
   );
-  const watchdogTimes = ticks.map(local);
+  const watchdogTimes = ticks.slice();
   const watchdogIndices = select(
-    ticks.slice(1).map((tick, index) => ({ t: index + 1, value: Math.max(0, tick - ticks[index]! - 16) })),
+    ticks.slice(1).map((tick, index) => ({ t: index + 1, value: Math.max(0, tick - ticks[index]! - 0.016) })),
   );
   const statistics: ProcessedResult['statistics'] = {
     frameCount: eligible.length,
@@ -158,22 +153,15 @@ export function processRun(run: RunResult): ProcessedResult {
   for (const name of Object.keys(statistics.phaseDurations)) statistics.phaseDurations[name]! /= 1000;
   const phases: ProcessedResult['timeline']['phases'] = full.phases.map((phase) => ({
     phase: phase.phase,
-    start: local(phase.start),
+    start: phase.start,
     ...optional('duration', duration(phase.durationMs)),
   }));
   const blocks = longest(full.blocks, 256).map((block) => ({
-    start: local(block.start),
-    duration: (block.end - block.start) / 1000,
+    start: block.start,
+    duration: block.end - block.start,
     sources: [...block.sources],
   }));
-  const maxTime = Math.max(
-    0,
-    ...[run.reporter.runEnd, run.reporter.renderStart, run.reporter.ready, visible.at(-1)?.cpuStart, ticks.at(-1)]
-      .filter((value): value is number => value !== undefined)
-      .map(local),
-    ...phases.map((phase) => phase.start + (phase.duration ?? 0)),
-    ...blocks.map((block) => block.start + block.duration),
-  );
+  const maxTime = run.reporter.runEnd ?? Math.max(0, ...frameTimes, ...watchdogTimes);
   return {
     schemaVersion: 3,
     runId: run.runId,
@@ -186,16 +174,7 @@ export function processRun(run: RunResult): ProcessedResult {
     },
     ...(run.reporter.downloads
       ? {
-          downloads: run.reporter.downloads.map((report) => ({
-            ...structuredClone(report),
-            timeOrigin: (report.timeOrigin - reporterOrigin) / 1000,
-            resources: report.resources.map((resource) => ({
-              ...resource,
-              startTime: resource.startTime / 1000,
-              responseStart: resource.responseStart / 1000,
-              responseEnd: resource.responseEnd / 1000,
-            })),
-          })),
+          downloads: structuredClone(run.reporter.downloads),
         }
       : {}),
     ...(run.suiteName === undefined ? {} : { suiteName: run.suiteName }),
@@ -211,10 +190,10 @@ export function processRun(run: RunResult): ProcessedResult {
     statistics,
     timeline: {
       maxTime,
-      ...optional('renderStart', run.reporter.renderStart === undefined ? undefined : local(run.reporter.renderStart!)),
-      ...optional('ready', run.reporter.ready === undefined ? undefined : local(run.reporter.ready)),
-      ...optional('runStart', run.reporter.runStart === undefined ? undefined : local(run.reporter.runStart)),
-      ...optional('runEnd', run.reporter.runEnd === undefined ? undefined : local(run.reporter.runEnd)),
+      ...optional('renderStart', run.reporter.renderStart),
+      ...optional('ready', run.reporter.ready),
+      ...optional('runStart', run.reporter.runStart),
+      ...optional('runEnd', run.reporter.runEnd),
       frameTimes,
       cpuDurations,
       gpuDurations,
@@ -227,13 +206,11 @@ export function processRun(run: RunResult): ProcessedResult {
     },
     measuredIntervals: full.intervals.map((point) => point.value / 1000),
     timing: {
-      harness: Object.fromEntries(
-        Object.entries(run.harness).map(([key, value]) => [key, value / 1000]),
-      ) as ProcessedResult['timing']['harness'],
+      harness: { ...run.harness },
       reporter: Object.fromEntries(
-        ['hello', 'navigationStart', 'ready', 'renderStart', 'runStart', 'runEnd'].flatMap((key) => {
+        ['navigationStart', 'ready', 'renderStart', 'runStart', 'runEnd'].flatMap((key) => {
           const value = run.reporter[key as keyof typeof run.reporter];
-          return typeof value === 'number' ? [[key, value / 1000]] : [];
+          return typeof value === 'number' ? [[key, value]] : [];
         }),
       ),
     },

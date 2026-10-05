@@ -22,375 +22,6 @@
           "type": "integer"
         },
         "type": {
-          "const": "download-report",
-          "type": "string"
-        },
-        "sentAt": {
-          "minimum": 0,
-          "type": "number"
-        },
-        "payload": {
-          "additionalProperties": false,
-          "type": "object",
-          "required": [
-            "phase",
-            "timeOrigin",
-            "totalTransferBytes",
-            "totalDecodedBytes",
-            "byCategory",
-            "unknownSizeCount",
-            "resources"
-          ],
-          "properties": {
-            "phase": {
-              "anyOf": [
-                {
-                  "const": "load",
-                  "type": "string"
-                },
-                {
-                  "const": "post-load",
-                  "type": "string"
-                }
-              ]
-            },
-            "timeOrigin": {
-              "type": "number"
-            },
-            "totalTransferBytes": {
-              "minimum": 0,
-              "type": "number"
-            },
-            "totalDecodedBytes": {
-              "minimum": 0,
-              "type": "number"
-            },
-            "byCategory": {
-              "additionalProperties": false,
-              "type": "object",
-              "required": ["script", "wasm", "model", "texture", "document", "other"],
-              "properties": {
-                "script": {
-                  "minimum": 0,
-                  "type": "number"
-                },
-                "wasm": {
-                  "minimum": 0,
-                  "type": "number"
-                },
-                "model": {
-                  "minimum": 0,
-                  "type": "number"
-                },
-                "texture": {
-                  "minimum": 0,
-                  "type": "number"
-                },
-                "document": {
-                  "minimum": 0,
-                  "type": "number"
-                },
-                "other": {
-                  "minimum": 0,
-                  "type": "number"
-                }
-              }
-            },
-            "unknownSizeCount": {
-              "minimum": 0,
-              "type": "integer"
-            },
-            "resources": {
-              "type": "array",
-              "items": {
-                "additionalProperties": false,
-                "type": "object",
-                "required": [
-                  "url",
-                  "category",
-                  "initiatorType",
-                  "startTime",
-                  "responseStart",
-                  "responseEnd",
-                  "transferSize",
-                  "encodedBodySize",
-                  "decodedBodySize",
-                  "sizeKnown"
-                ],
-                "properties": {
-                  "url": {
-                    "type": "string"
-                  },
-                  "category": {
-                    "anyOf": [
-                      {
-                        "const": "script",
-                        "type": "string"
-                      },
-                      {
-                        "const": "wasm",
-                        "type": "string"
-                      },
-                      {
-                        "const": "model",
-                        "type": "string"
-                      },
-                      {
-                        "const": "texture",
-                        "type": "string"
-                      },
-                      {
-                        "const": "document",
-                        "type": "string"
-                      },
-                      {
-                        "const": "other",
-                        "type": "string"
-                      }
-                    ]
-                  },
-                  "initiatorType": {
-                    "type": "string"
-                  },
-                  "startTime": {
-                    "minimum": 0,
-                    "type": "number"
-                  },
-                  "responseStart": {
-                    "minimum": 0,
-                    "type": "number"
-                  },
-                  "responseEnd": {
-                    "minimum": 0,
-                    "type": "number"
-                  },
-                  "transferSize": {
-                    "minimum": 0,
-                    "type": "number"
-                  },
-                  "encodedBodySize": {
-                    "minimum": 0,
-                    "type": "number"
-                  },
-                  "decodedBodySize": {
-                    "minimum": 0,
-                    "type": "number"
-                  },
-                  "sizeKnown": {
-                    "type": "boolean"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "additionalProperties": false,
-      "type": "object",
-      "required": ["protocol", "protocolVersion", "runId", "seq", "type", "sentAt", "payload"],
-      "properties": {
-        "protocol": {
-          "const": "performance-kit",
-          "type": "string"
-        },
-        "protocolVersion": {
-          "const": 1,
-          "type": "number"
-        },
-        "runId": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "seq": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "type": {
-          "const": "hello",
-          "type": "string"
-        },
-        "sentAt": {
-          "minimum": 0,
-          "type": "number"
-        },
-        "payload": {
-          "additionalProperties": false,
-          "type": "object",
-          "required": ["reporterVersion", "capabilities"],
-          "properties": {
-            "reporterVersion": {
-              "type": "string"
-            },
-            "navigationStart": {
-              "minimum": 0,
-              "type": "number"
-            },
-            "capabilities": {
-              "additionalProperties": false,
-              "type": "object",
-              "required": ["gpuTimestamps", "longTasks", "loaf"],
-              "properties": {
-                "gpuTimestamps": {
-                  "type": "boolean"
-                },
-                "longTasks": {
-                  "type": "boolean"
-                },
-                "loaf": {
-                  "type": "boolean"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "additionalProperties": false,
-      "type": "object",
-      "required": ["protocol", "protocolVersion", "runId", "seq", "type", "sentAt", "payload"],
-      "properties": {
-        "protocol": {
-          "const": "performance-kit",
-          "type": "string"
-        },
-        "protocolVersion": {
-          "const": 1,
-          "type": "number"
-        },
-        "runId": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "seq": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "type": {
-          "const": "phase",
-          "type": "string"
-        },
-        "sentAt": {
-          "minimum": 0,
-          "type": "number"
-        },
-        "payload": {
-          "additionalProperties": false,
-          "type": "object",
-          "required": ["id", "phase", "start"],
-          "properties": {
-            "id": {
-              "minimum": 0,
-              "type": "integer"
-            },
-            "phase": {
-              "minLength": 1,
-              "type": "string"
-            },
-            "start": {
-              "additionalProperties": false,
-              "type": "object",
-              "required": ["clock", "t"],
-              "properties": {
-                "clock": {
-                  "const": "reporter",
-                  "type": "string"
-                },
-                "t": {
-                  "minimum": 0,
-                  "type": "number"
-                }
-              }
-            },
-            "end": {
-              "additionalProperties": false,
-              "type": "object",
-              "required": ["clock", "t"],
-              "properties": {
-                "clock": {
-                  "const": "reporter",
-                  "type": "string"
-                },
-                "t": {
-                  "minimum": 0,
-                  "type": "number"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "additionalProperties": false,
-      "type": "object",
-      "required": ["protocol", "protocolVersion", "runId", "seq", "type", "sentAt", "payload"],
-      "properties": {
-        "protocol": {
-          "const": "performance-kit",
-          "type": "string"
-        },
-        "protocolVersion": {
-          "const": 1,
-          "type": "number"
-        },
-        "runId": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "seq": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "type": {
-          "const": "ready",
-          "type": "string"
-        },
-        "sentAt": {
-          "minimum": 0,
-          "type": "number"
-        },
-        "payload": {
-          "additionalProperties": false,
-          "type": "object",
-          "required": ["at", "renderStart"],
-          "properties": {
-            "at": {
-              "minimum": 0,
-              "type": "number"
-            },
-            "renderStart": {
-              "minimum": 0,
-              "type": "number"
-            }
-          }
-        }
-      }
-    },
-    {
-      "additionalProperties": false,
-      "type": "object",
-      "required": ["protocol", "protocolVersion", "runId", "seq", "type", "sentAt", "payload"],
-      "properties": {
-        "protocol": {
-          "const": "performance-kit",
-          "type": "string"
-        },
-        "protocolVersion": {
-          "const": 1,
-          "type": "number"
-        },
-        "runId": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "seq": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "type": {
           "const": "capture",
           "type": "string"
         },
@@ -444,7 +75,7 @@
         "payload": {
           "additionalProperties": false,
           "type": "object",
-          "required": ["runEnd", "frames", "blocks", "watchdogTicks"],
+          "required": ["runEnd", "frames", "blocks", "watchdogTicks", "phases", "ready", "downloads", "environment"],
           "properties": {
             "navigationStart": {
               "minimum": 0,
@@ -569,44 +200,29 @@
                 "type": "number"
               }
             },
-            "messages": {
+            "phases": {
               "type": "array",
               "items": {
                 "additionalProperties": false,
                 "type": "object",
-                "required": ["type", "direction", "sentAt", "receivedAt"],
+                "required": ["id", "phase", "start"],
                 "properties": {
-                  "type": {
+                  "id": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "phase": {
+                    "minLength": 1,
                     "type": "string"
                   },
-                  "direction": {
-                    "anyOf": [
-                      {
-                        "const": "toReporter",
-                        "type": "string"
-                      },
-                      {
-                        "const": "toHarness",
-                        "type": "string"
-                      }
-                    ]
-                  },
-                  "sentAt": {
+                  "start": {
                     "additionalProperties": false,
                     "type": "object",
                     "required": ["clock", "t"],
                     "properties": {
                       "clock": {
-                        "anyOf": [
-                          {
-                            "const": "harness",
-                            "type": "string"
-                          },
-                          {
-                            "const": "reporter",
-                            "type": "string"
-                          }
-                        ]
+                        "const": "reporter",
+                        "type": "string"
                       },
                       "t": {
                         "minimum": 0,
@@ -614,22 +230,14 @@
                       }
                     }
                   },
-                  "receivedAt": {
+                  "end": {
                     "additionalProperties": false,
                     "type": "object",
                     "required": ["clock", "t"],
                     "properties": {
                       "clock": {
-                        "anyOf": [
-                          {
-                            "const": "harness",
-                            "type": "string"
-                          },
-                          {
-                            "const": "reporter",
-                            "type": "string"
-                          }
-                        ]
+                        "const": "reporter",
+                        "type": "string"
                       },
                       "t": {
                         "minimum": 0,
@@ -639,220 +247,254 @@
                   }
                 }
               }
-            }
-          }
-        }
-      }
-    },
-    {
-      "additionalProperties": false,
-      "type": "object",
-      "required": ["protocol", "protocolVersion", "runId", "seq", "type", "sentAt", "payload"],
-      "properties": {
-        "protocol": {
-          "const": "performance-kit",
-          "type": "string"
-        },
-        "protocolVersion": {
-          "const": 1,
-          "type": "number"
-        },
-        "runId": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "seq": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "type": {
-          "const": "environment",
-          "type": "string"
-        },
-        "sentAt": {
-          "minimum": 0,
-          "type": "number"
-        },
-        "payload": {
-          "additionalProperties": false,
-          "type": "object",
-          "properties": {
-            "userAgent": {
-              "type": "string"
             },
-            "gpuAdapter": {
-              "additionalProperties": false,
-              "type": "object",
-              "properties": {
-                "vendor": {
-                  "type": "string"
-                },
-                "architecture": {
-                  "type": "string"
-                },
-                "description": {
-                  "type": "string"
-                }
-              }
-            },
-            "api": {
-              "anyOf": [
-                {
-                  "const": "webgpu",
-                  "type": "string"
-                },
-                {
-                  "const": "webgl2",
-                  "type": "string"
-                },
-                {
-                  "const": "other",
-                  "type": "string"
-                }
-              ]
-            },
-            "gpuTimestampsAvailable": {
-              "type": "boolean"
-            },
-            "crossOriginIsolated": {
-              "type": "boolean"
-            },
-            "devicePixelRatio": {
-              "exclusiveMinimum": 0,
+            "ready": {
+              "minimum": 0,
               "type": "number"
             },
-            "canvasSize": {
-              "additionalProperties": false,
-              "type": "object",
-              "required": ["width", "height"],
-              "properties": {
-                "width": {
-                  "exclusiveMinimum": 0,
-                  "type": "number"
-                },
-                "height": {
-                  "exclusiveMinimum": 0,
-                  "type": "number"
-                }
-              }
-            },
-            "chromeFlags": {
+            "downloads": {
               "type": "array",
               "items": {
-                "type": "string"
-              }
-            },
-            "host": {
-              "additionalProperties": false,
-              "type": "object",
-              "required": ["os", "cpu"],
-              "properties": {
-                "os": {
-                  "type": "string"
-                },
-                "cpu": {
-                  "type": "string"
-                },
-                "machineId": {
-                  "type": "string"
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "phase",
+                  "totalTransferBytes",
+                  "totalDecodedBytes",
+                  "byCategory",
+                  "unknownSizeCount",
+                  "resources"
+                ],
+                "properties": {
+                  "phase": {
+                    "anyOf": [
+                      {
+                        "const": "load",
+                        "type": "string"
+                      },
+                      {
+                        "const": "post-load",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "totalTransferBytes": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "totalDecodedBytes": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "byCategory": {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": ["script", "wasm", "model", "texture", "document", "other"],
+                    "properties": {
+                      "script": {
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      "wasm": {
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      "model": {
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      "texture": {
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      "document": {
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      "other": {
+                        "minimum": 0,
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "unknownSizeCount": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "resources": {
+                    "type": "array",
+                    "items": {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "url",
+                        "category",
+                        "initiatorType",
+                        "startTime",
+                        "responseStart",
+                        "responseEnd",
+                        "transferSize",
+                        "encodedBodySize",
+                        "decodedBodySize",
+                        "sizeKnown"
+                      ],
+                      "properties": {
+                        "url": {
+                          "type": "string"
+                        },
+                        "category": {
+                          "anyOf": [
+                            {
+                              "const": "script",
+                              "type": "string"
+                            },
+                            {
+                              "const": "wasm",
+                              "type": "string"
+                            },
+                            {
+                              "const": "model",
+                              "type": "string"
+                            },
+                            {
+                              "const": "texture",
+                              "type": "string"
+                            },
+                            {
+                              "const": "document",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "initiatorType": {
+                          "type": "string"
+                        },
+                        "startTime": {
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "responseStart": {
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "responseEnd": {
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "transferSize": {
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "encodedBodySize": {
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "decodedBodySize": {
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "sizeKnown": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             },
-            "gitCommit": {
-              "type": "string"
-            }
-          }
-        }
-      }
-    },
-    {
-      "additionalProperties": false,
-      "type": "object",
-      "required": ["protocol", "protocolVersion", "runId", "seq", "type", "sentAt", "payload"],
-      "properties": {
-        "protocol": {
-          "const": "performance-kit",
-          "type": "string"
-        },
-        "protocolVersion": {
-          "const": 1,
-          "type": "number"
-        },
-        "runId": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "seq": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "type": {
-          "const": "error",
-          "type": "string"
-        },
-        "sentAt": {
-          "minimum": 0,
-          "type": "number"
-        },
-        "payload": {
-          "additionalProperties": false,
-          "type": "object",
-          "required": ["message"],
-          "properties": {
-            "message": {
-              "type": "string"
-            },
-            "stack": {
-              "type": "string"
-            },
-            "phase": {
-              "type": "string"
-            }
-          }
-        }
-      }
-    },
-    {
-      "additionalProperties": false,
-      "type": "object",
-      "required": ["protocol", "protocolVersion", "runId", "seq", "type", "sentAt", "payload"],
-      "properties": {
-        "protocol": {
-          "const": "performance-kit",
-          "type": "string"
-        },
-        "protocolVersion": {
-          "const": 1,
-          "type": "number"
-        },
-        "runId": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "seq": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "type": {
-          "const": "progress",
-          "type": "string"
-        },
-        "sentAt": {
-          "minimum": 0,
-          "type": "number"
-        },
-        "payload": {
-          "additionalProperties": false,
-          "type": "object",
-          "required": ["at", "frameCount"],
-          "properties": {
-            "at": {
-              "minimum": 0,
-              "type": "number"
-            },
-            "frameCount": {
-              "minimum": 0,
-              "type": "integer"
+            "environment": {
+              "additionalProperties": false,
+              "type": "object",
+              "properties": {
+                "userAgent": {
+                  "type": "string"
+                },
+                "gpuAdapter": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "properties": {
+                    "vendor": {
+                      "type": "string"
+                    },
+                    "architecture": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "api": {
+                  "anyOf": [
+                    {
+                      "const": "webgpu",
+                      "type": "string"
+                    },
+                    {
+                      "const": "webgl2",
+                      "type": "string"
+                    },
+                    {
+                      "const": "other",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "gpuTimestampsAvailable": {
+                  "type": "boolean"
+                },
+                "crossOriginIsolated": {
+                  "type": "boolean"
+                },
+                "devicePixelRatio": {
+                  "exclusiveMinimum": 0,
+                  "type": "number"
+                },
+                "canvasSize": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": ["width", "height"],
+                  "properties": {
+                    "width": {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    },
+                    "height": {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    }
+                  }
+                },
+                "chromeFlags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "host": {
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": ["os", "cpu"],
+                  "properties": {
+                    "os": {
+                      "type": "string"
+                    },
+                    "cpu": {
+                      "type": "string"
+                    },
+                    "machineId": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "gitCommit": {
+                  "type": "string"
+                }
+              }
             }
           }
         }

@@ -27,11 +27,7 @@ export function resourceRecord(entry: PerformanceResourceTiming): ResourceRecord
     sizeKnown: !(entry.responseStart === 0 && entry.responseEnd > 0),
   };
 }
-export function downloadReport(
-  resources: ResourceRecord[],
-  phase: DownloadReport['phase'],
-  timeOrigin: number,
-): DownloadReport {
+export function downloadReport(resources: ResourceRecord[], phase: DownloadReport['phase']): DownloadReport {
   const byCategory = Object.fromEntries(categories.map((category) => [category, 0])) as DownloadReport['byCategory'];
   let totalTransferBytes = 0,
     totalDecodedBytes = 0,
@@ -45,10 +41,10 @@ export function downloadReport(
     totalDecodedBytes += resource.decodedBodySize;
     byCategory[resource.category] += resource.transferSize;
   }
-  return { phase, timeOrigin, resources, byCategory, totalTransferBytes, totalDecodedBytes, unknownSizeCount };
+  return { phase, resources, byCategory, totalTransferBytes, totalDecodedBytes, unknownSizeCount };
 }
 /** Start immediately, retain buffered entries, and drain queued records at each boundary. */
-export function observeDownloads() {
+export function observeDownloads(originTime = 0) {
   performance.setResourceTimingBufferSize(5000);
   const entries: PerformanceResourceTiming[] = [];
   let observer: PerformanceObserver | undefined;
@@ -66,10 +62,17 @@ export function observeDownloads() {
       reported = entries.length;
       if (phase === 'load')
         pending.unshift(...(performance.getEntriesByType('navigation') as PerformanceResourceTiming[]));
-      return downloadReport(pending.map(resourceRecord), phase, performance.timeOrigin);
+      const report = downloadReport(pending.map(resourceRecord), phase);
+      for (const resource of report.resources) {
+        resource.startTime = Math.max(0, (resource.startTime - originTime) / 1000);
+        resource.responseStart = Math.max(0, (resource.responseStart - originTime) / 1000);
+        resource.responseEnd = Math.max(0, (resource.responseEnd - originTime) / 1000);
+      }
+      return report;
     },
     dispose() {
       observer?.disconnect();
+      observer = undefined;
     },
   };
 }

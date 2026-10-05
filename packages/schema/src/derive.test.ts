@@ -15,25 +15,24 @@ function run(step = 10): RunResult {
     },
     networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
     config: { durationMs: 100, vsync: 'off' },
-    harness: { teardown: 1300, runSent: 1100, runEndObserved: 1208 },
+    harness: { teardown: 0.3, runEndObserved: 0.208 },
     reporter: {
-      hello: 1005,
-      navigationStart: 1005,
-      ready: 1055,
-      renderStart: 1055,
-      runStart: 1105,
-      runEnd: 1205,
+      navigationStart: 0,
+      ready: 0.05,
+      renderStart: 0.05,
+      runStart: 0.1,
+      runEnd: 0.2,
       frames: [
-        { cpuStart: 1080, cpuEnd: 1085 },
+        { cpuStart: 0.075, cpuEnd: 0.08 },
         ...Array.from({ length: Math.floor(100 / step) + 1 }, (_, i) => ({
-          cpuStart: 1105 + i * step,
-          cpuEnd: 1107 + i * step,
+          cpuStart: 0.1 + (i * step) / 1000,
+          cpuEnd: 0.102 + (i * step) / 1000,
           gpuStart: '1000000',
           gpuEnd: '3000000',
         })),
       ],
-      watchdogTicks: [1005, 1021, 1101],
-      blocks: [{ start: 1040, end: 1080, source: 'longtask' }],
+      watchdogTicks: [0, 0.016, 0.096],
+      blocks: [{ start: 0.035, end: 0.075, source: 'longtask' }],
     },
     status: 'ok',
   };
@@ -43,9 +42,9 @@ describe('read-time statistics', () => {
     expect(percentile([30, 10, 20, 40], 0.25)).toBe(17.5);
     expect(percentile([], 0.5)).toBeUndefined();
     const d = deriveRun(run());
-    expect(d.median).toBe(10);
-    expect(d.iqr).toBe(0);
-    expect(d.mad).toBe(0);
+    expect(d.median).toBeCloseTo(10);
+    expect(d.iqr).toBeCloseTo(0);
+    expect(d.mad).toBeCloseTo(0);
     expect(d.gpu[0]!.value).toBe(2);
   });
   it('uses client init timing without cross-clock calculations', () => {
@@ -58,8 +57,8 @@ describe('read-time statistics', () => {
     const d = deriveRun(run());
     expect(d.intervals).toHaveLength(10);
     expect(d.watchdog[1]!.value).toBe(64);
-    expect(d.initBlockedMs).toBe(18);
-    expect(d.initMaxBlockMs).toBe(18);
+    expect(d.initBlockedMs).toBeCloseTo(18);
+    expect(d.initMaxBlockMs).toBeCloseTo(18);
   });
   it('merges overlapping observer/watchdog records without double-counting', () => {
     expect(
@@ -102,7 +101,7 @@ describe('read-time statistics', () => {
     expect(partial.intervals).toEqual([]);
     expect(partial.cpu).toEqual([]);
     expect(partial.gpu).toEqual([]);
-    expect(summarizeRuns([failed, run(10)]).median).toBe(10);
+    expect(summarizeRuns([failed, run(10)]).median).toBeCloseTo(10);
     expect(compareRuns([failed, run(10), run(11)], [run(20), run(21)]).verdict).toBe('faster');
   });
   it('validates bootstrap options', () => {
@@ -130,7 +129,7 @@ it('rejects comparisons across network conditions, including differing recorded 
   expect(() => compareRuns([a], [b])).toThrow('network profiles');
 });
 
-it('compares persisted seconds with raw milliseconds using the same network profile and frame statistics', () => {
+it('compares persisted seconds with raw seconds offsets using the same network profile and frame statistics', () => {
   const a = run(10),
     b = run(20);
   for (const input of [a, b]) input.networkProfile.latencyMs = 150;

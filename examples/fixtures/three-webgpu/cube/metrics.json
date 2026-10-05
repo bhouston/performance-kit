@@ -401,19 +401,17 @@
   ],
   "timing": {
     "harness": {
-      "iframeCreated": 0.99,
-      "runSent": 2.3,
-      "runEndObserved": 3.31,
-      "captureSent": 2.25,
-      "teardown": 3.4
+      "iframeCreated": 0,
+      "runEndObserved": 2.3200000000000003,
+      "captureSent": 1.26,
+      "teardown": 2.41
     },
     "reporter": {
-      "hello": 1.005,
-      "navigationStart": 1.005,
-      "ready": 2.005,
-      "renderStart": 2.005,
-      "runStart": 2.005,
-      "runEnd": 3.305
+      "navigationStart": 0,
+      "ready": 1.0,
+      "renderStart": 1.0,
+      "runStart": 1.0,
+      "runEnd": 2.3000000000000003
     }
   }
 }

@@ -96,8 +96,8 @@ describe('schema boundaries', () => {
       runId: 'test',
       seq: 0,
       sentAt: 1,
-      type: 'run',
-      payload: { durationMs: 100 },
+      type: 'abort',
+      payload: { reason: 'cancelled' },
     };
     expect(validateMessageToReporter(message)).toBe(true);
     expect(validateMessageToHarness(message)).toBe(false);
@@ -183,13 +183,29 @@ it('rejects phases without current identity or clock', () => {
     protocolVersion: 1,
     runId: 'test',
     seq: 0,
-    type: 'phase',
+    type: 'runEnd',
     sentAt: 1,
-    payload: phase,
+    payload: {
+      navigationStart: 0,
+      ready: 1,
+      runStart: 1,
+      runEnd: 2,
+      frames: [],
+      blocks: [],
+      watchdogTicks: [],
+      downloads: [],
+      environment: {},
+      phases: [phase],
+    },
   };
   expect(() => assertMessageToHarness(message)).not.toThrow();
-  expect(() => assertMessageToHarness({ ...message, payload: { ...phase, id: undefined } })).toThrow();
   expect(() =>
-    assertMessageToHarness({ ...message, payload: { ...phase, start: { clock: 'harness', t: 1 } } }),
+    assertMessageToHarness({ ...message, payload: { ...message.payload, phases: [{ ...phase, id: undefined }] } }),
+  ).toThrow();
+  expect(() =>
+    assertMessageToHarness({
+      ...message,
+      payload: { ...message.payload, phases: [{ ...phase, start: { clock: 'harness', t: 1 } }] },
+    }),
   ).toThrow();
 });
