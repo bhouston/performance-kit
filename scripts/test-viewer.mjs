@@ -27,32 +27,32 @@ try {
       },
       networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
       config: { durationMs: 4000, vsync: 'on', phaseColors: { assets: '#8b5cf6' } },
-      harness: { teardown: 6000 },
+      harness: { teardown: 5.2 },
       reporter: {
-        navigationStart: 1000,
-        ready: 1000 + init,
-        renderStart: 1000 + init,
-        runStart: 1000 + init,
-        runEnd: 6000,
+        navigationStart: 0,
+        ready: init / 1000,
+        renderStart: init / 1000,
+        runStart: init / 1000,
+        runEnd: i === 7 ? 4.6 : 5,
         frames: Array.from({ length: 80 }, (_, n) => ({
-          cpuStart: 1000 + init + n * frame,
-          cpuEnd: 1001 + init + n * frame,
+          cpuStart: (init + n * frame) / 1000,
+          cpuEnd: (1 + init + n * frame) / 1000,
         })),
         phases: [
           {
             id: 0,
             phase: 'assets',
-            start: { clock: 'reporter', t: 1000 },
-            end: { clock: 'reporter', t: 1000 + init / 2 },
+            start: { clock: 'reporter', t: 0 },
+            end: { clock: 'reporter', t: init / 2000 },
           },
           {
             id: 1,
             phase: 'assets',
-            start: { clock: 'reporter', t: 1000 + init / 2 },
-            end: { clock: 'reporter', t: 1000 + init },
+            start: { clock: 'reporter', t: init / 2000 },
+            end: { clock: 'reporter', t: init / 1000 },
           },
         ],
-        watchdogTicks: [1000, 1016, 1050, 1400, 1416],
+        watchdogTicks: [0, 0.016, 0.05, 0.08, 0.096],
       },
       status: 'ok',
     });
@@ -61,14 +61,21 @@ try {
   server = await startServer({ out: temp + '-site', port: 0 });
   browser = await puppeteer.launch({ headless: true, executablePath: process.env.PERFORMANCE_KIT_CHROME_PATH });
   const page = await browser.newPage();
-  await page.setViewport({ width: 1400, height: 1000 });
+  await page.setViewport({ width: 1400, height: 0 });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.evaluateOnNewDocument(() => {
     window.__chartLabels = [];
     const original = CanvasRenderingContext2D.prototype.fillText;
     CanvasRenderingContext2D.prototype.fillText = function (text, ...args) {
-      window.__chartLabels.push({ text: String(text), chart: this.canvas.getAttribute('aria-label') });
+      window.__chartLabels.push({
+        text: String(text),
+        chart: this.canvas.getAttribute('aria-label'),
+        x: args[0],
+        width: this.canvas.clientWidth,
+        inkWidth: this.measureText(text).width,
+        alignment: this.textAlign,
+      });
       return original.call(this, text, ...args);
     };
   });
@@ -92,6 +99,10 @@ try {
   assert.match(page.url(), /result=10-renderer-7-cube/);
   assert.equal(await page.$$('.card').then((nodes) => nodes.length), 0);
   const detailURL = page.url();
+  await page.evaluate(() => {
+    window.__chartLabels = [];
+  });
+  await page.setViewport({ width: 1390, height: 1000 });
   assert.equal(await page.$eval('.detail h2', (node) => node.textContent), 'Setup and frame timing · ms');
   assert.equal(await page.$$eval('.detail canvas.timeline', (nodes) => nodes.length), 1);
   assert.equal(await page.$$eval('.detail .detail-grid tbody tr', (nodes) => nodes.length), 2);
@@ -121,6 +132,15 @@ try {
   assert(labels.includes('1'));
   assert(labels.includes('2'));
   assert(labels.includes('ms'));
+  assert(!labels.includes('5')); // This run ends at 4.6s despite other cards extending to 5s.
+  for (const item of draws.filter(
+    (label) => /^(average |P95 |init done )/.test(label.text) || (/^\d+$/.test(label.text) && label.x >= 44),
+  )) {
+    const right =
+      item.x + (item.alignment === 'right' ? 0 : item.alignment === 'center' ? item.inkWidth / 2 : item.inkWidth);
+    const left = right - item.inkWidth;
+    assert(left >= 44 - 1 && right <= item.width - 16 + 1, `Label outside plot: ${item.text}`);
+  }
   await page.screenshot({
     path: process.env.PERFORMANCE_KIT_SCREENSHOT_DIR
       ? join(process.env.PERFORMANCE_KIT_SCREENSHOT_DIR, 'detail.png')

@@ -74,15 +74,7 @@
       "items": {
         "additionalProperties": false,
         "type": "object",
-        "required": [
-          "phase",
-          "timeOrigin",
-          "totalTransferBytes",
-          "totalDecodedBytes",
-          "byCategory",
-          "unknownSizeCount",
-          "resources"
-        ],
+        "required": ["phase", "totalTransferBytes", "totalDecodedBytes", "byCategory", "unknownSizeCount", "resources"],
         "properties": {
           "phase": {
             "anyOf": [
@@ -95,9 +87,6 @@
                 "type": "string"
               }
             ]
-          },
-          "timeOrigin": {
-            "type": "number"
           },
           "totalTransferBytes": {
             "minimum": 0,
@@ -686,9 +675,6 @@
             "iframeCreated": {
               "type": "number"
             },
-            "runSent": {
-              "type": "number"
-            },
             "runEndObserved": {
               "type": "number"
             },
@@ -704,9 +690,6 @@
           "additionalProperties": false,
           "type": "object",
           "properties": {
-            "hello": {
-              "type": "number"
-            },
             "navigationStart": {
               "type": "number"
             },

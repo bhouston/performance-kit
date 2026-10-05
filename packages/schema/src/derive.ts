@@ -41,10 +41,10 @@ export function deriveRun(run: RunResult) {
           (f) => (start === undefined || f.cpuStart >= start) && (end === undefined || f.cpuStart <= end),
         );
   const intervals: Point[] = frames.slice(0, -1).flatMap((f, i) => {
-    const value = frames[i + 1]!.cpuStart - f.cpuStart;
+    const value = (frames[i + 1]!.cpuStart - f.cpuStart) * 1000;
     return value > 0 ? [{ t: f.cpuStart, value }] : [];
   });
-  const cpu = frames.map((f) => ({ t: f.cpuStart, value: f.cpuEnd - f.cpuStart })).filter((p) => p.value >= 0);
+  const cpu = frames.map((f) => ({ t: f.cpuStart, value: (f.cpuEnd - f.cpuStart) * 1000 })).filter((p) => p.value >= 0);
   const gpu = frames.flatMap((f) => {
     if (f.gpuStart === undefined || f.gpuEnd === undefined) return [];
     const value = Number(BigInt(f.gpuEnd) - BigInt(f.gpuStart)) / 1e6;
@@ -65,18 +65,20 @@ export function deriveRun(run: RunResult) {
         );
   const watchdog = (run.reporter.watchdogTicks ?? [])
     .slice(1)
-    .map((t, i) => ({ t, value: Math.max(0, t - run.reporter.watchdogTicks![i]! - 16) }));
+    .map((t, i) => ({ t, value: Math.max(0, t - run.reporter.watchdogTicks![i]! - 0.016) * 1000 }));
   const blocks = mergeBlocks([
     ...(run.reporter.blocks ?? []).map((b) => ({
       start: b.start,
       end: b.end,
       sources: [b.source],
     })),
-    ...watchdog.filter((p) => p.value >= 50).map((p) => ({ start: p.t - p.value, end: p.t, sources: ['watchdog'] })),
+    ...watchdog
+      .filter((p) => p.value >= 50)
+      .map((p) => ({ start: p.t - p.value / 1000, end: p.t, sources: ['watchdog'] })),
   ]);
   const ready = run.reporter.renderStart;
   const initStart = run.reporter.navigationStart;
-  const initMs = ready !== undefined && initStart !== undefined ? ready - initStart : undefined;
+  const initMs = ready !== undefined && initStart !== undefined ? (ready - initStart) * 1000 : undefined;
   const initBlocks =
     initStart === undefined || ready === undefined
       ? []
@@ -92,7 +94,7 @@ export function deriveRun(run: RunResult) {
     phase: p.phase,
     start: p.start.t,
     end: p.end?.t,
-    durationMs: p.end ? p.end.t - p.start.t : undefined,
+    durationMs: p.end ? (p.end.t - p.start.t) * 1000 : undefined,
   }));
   if (initStart !== undefined && ready !== undefined)
     phases.push(
@@ -100,7 +102,7 @@ export function deriveRun(run: RunResult) {
         phase: 'unknown',
         start: gap.start,
         end: gap.end,
-        durationMs: gap.end - gap.start,
+        durationMs: (gap.end - gap.start) * 1000,
       })),
     );
   phases.sort((a, b) => a.start - b.start);
@@ -125,8 +127,8 @@ export function deriveRun(run: RunResult) {
     phases,
     blocks,
     watchdog,
-    initMaxBlockMs: Math.max(0, ...initBlocks.map((b) => b.end - b.start)),
-    initBlockedMs: initBlocks.reduce((n, b) => n + b.end - b.start, 0),
+    initMaxBlockMs: Math.max(0, ...initBlocks.map((b) => (b.end - b.start) * 1000)),
+    initBlockedMs: initBlocks.reduce((n, b) => n + (b.end - b.start) * 1000, 0),
   };
 }
 export function summarizeRuns(runs: readonly (RunResult | ProcessedResult)[]) {

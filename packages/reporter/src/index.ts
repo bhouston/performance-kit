@@ -3,7 +3,6 @@ import type {
   Environment,
   FrameRecord,
   MessageToReporter,
-  MessageLogItem,
   PhaseMark,
   PhaseName,
 } from 'performance-kit-schema';
@@ -17,9 +16,11 @@ export interface ReporterOptions {
   enabled?: boolean;
   frameCapacity?: number;
   watchdogMs?: number;
+  durationMs?: number;
 }
 export interface Reporter {
   readonly enabled: boolean;
+  readonly running: boolean;
   readonly entryId: string;
   readonly params: Record<string, unknown>;
   onCapture(
@@ -53,30 +54,34 @@ declare global {
     __performanceKitReceive?: (message: unknown) => void;
   }
 }
-const now = () => performance.timeOrigin + performance.now();
 export function createReporter(options: ReporterOptions = {}): Reporter {
+  const originTime = performance.now();
+  const now = () => (performance.now() - originTime) / 1000;
   const browser = typeof window !== 'undefined';
   const query = browser ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const runId = options.runId ?? query.get('performanceKitRunId') ?? '';
   const entryId = query.get('performanceKitEntryId') ?? '';
   const params: unknown = JSON.parse(query.get('performanceKitParams') ?? '{}');
   if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error('Invalid workload params');
-  const navigationStart = performance.timeOrigin;
+  const navigationStart = 0;
+  const durationMs = options.durationMs ?? Number(query.get('performanceKitDurationMs') ?? 5000);
+  if (!Number.isFinite(durationMs) || durationMs <= 0) throw new Error('Invalid run duration');
   const origin = options.harnessOrigin ?? query.get('performanceKitOrigin') ?? '';
   const bridge = browser && typeof window.__performanceKitSend === 'function';
   const enabled = browser && (options.enabled ?? Boolean(runId && (bridge || (window.parent !== window && origin))));
-  const downloads = enabled ? observeDownloads() : undefined;
-  let loaded = false;
+  const downloads = enabled ? observeDownloads(originTime) : undefined;
+  const downloadReports: ReturnType<NonNullable<typeof downloads>['snapshot']>[] = [];
+  const environment: Partial<Environment> = {};
+  let readyAt = 0;
   let disposed = false;
   let captureCallback: Parameters<Reporter['onCapture']>[0] | undefined;
   let seq = 0;
   let receivedSeq = -1;
-  let state: 'init' | 'ready' | 'running' | 'ended' = 'init';
+  let state: 'init' | 'running' | 'ended' = 'init';
   const phases: PhaseMark[] = [];
   const ticks: number[] = [];
-  const incomingMessages: MessageLogItem[] = [];
   const blocks: BlockRecord[] = [];
-  // Fixed-width records avoid per-frame allocations; expanded outside measurement when run is requested.
+  // Fixed-width records avoid per-frame allocations; expanded outside measurement when the run completes.
   let capacity = options.frameCapacity ?? 30000;
   let data = new Float64Array(capacity * 4);
   let count = 0;
@@ -86,6 +91,7 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
   let runTimer: ReturnType<typeof setTimeout> | undefined;
   let watchdog: ReturnType<typeof setTimeout> | undefined;
   let observer: PerformanceObserver | undefined;
+  let drainBlocks: (() => void) | undefined;
   const send = (type: string, payload: unknown, transfer: Transferable[] = []) => {
     if (!enabled || disposed) return;
     const message = {
@@ -100,11 +106,10 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
     if (window.__performanceKitSend) window.__performanceKitSend(message);
     else window.parent.postMessage(message, origin, transfer);
   };
-  const error = (value: unknown) =>
-    send('error', {
-      message: value instanceof Error ? value.message : String(value),
-      ...(value instanceof Error && value.stack ? { stack: value.stack } : {}),
-    });
+  const error = (_value: unknown) => {
+    // Failed runs never publish a partial report; the harness deadline records failure.
+    api.dispose();
+  };
   const records = () =>
     Array.from({ length: count }, (_, index): FrameRecord => {
       const base = index * 4;
@@ -115,20 +120,27 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
         ...(Number.isNaN(data[base + 2]!) ? {} : { animationTime: data[base + 2]! }),
       };
     });
-  const finish = (partial = false) => {
-    if (state === 'ended' || (!partial && state !== 'running')) return;
-    state = 'ended';
+  const finish = () => {
+    if (state !== 'running' || disposed) return;
     const runEnd = now();
-    if (overflow) error(new Error('Frame storage capacity exceeded; increase frameCapacity'));
-    if (loaded) send('download-report', downloads!.snapshot('post-load'));
+    state = 'ended';
+    if (overflow) {
+      error(new Error('Frame storage capacity exceeded; increase frameCapacity'));
+      return;
+    }
+    downloadReports.push(downloads!.snapshot('post-load'));
     send('runEnd', {
       navigationStart,
-      ...(runStart ? { runStart, renderStart: runStart } : {}),
+      ready: readyAt,
+      runStart,
+      renderStart: runStart,
       runEnd,
+      phases: phases.map((phase) => ({ ...phase })),
+      environment,
+      downloads: downloadReports,
       frames: records(),
       blocks: blocks.slice(),
       watchdogTicks: ticks.slice(),
-      messages: incomingMessages.slice(),
     });
   };
   const tick = () => {
@@ -145,11 +157,11 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
         ? 'longtask'
         : undefined;
     if (!type) return;
-    observer = new PerformanceObserver((list) => {
-      for (const entry of list.getEntries())
+    const recordBlocks = (entries: PerformanceEntry[]) => {
+      for (const entry of entries)
         blocks.push({
-          start: performance.timeOrigin + entry.startTime,
-          end: performance.timeOrigin + entry.startTime + entry.duration,
+          start: Math.max(0, (entry.startTime - originTime) / 1000),
+          end: Math.max(0, (entry.startTime + entry.duration - originTime) / 1000),
           source: type === 'longtask' ? 'longtask' : 'loaf',
           ...('scripts' in entry && Array.isArray(entry.scripts)
             ? {
@@ -163,8 +175,8 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
                     sourceFunctionName?: string;
                     sourceCharPosition?: number;
                   }) => ({
-                    start: performance.timeOrigin + script.startTime,
-                    end: performance.timeOrigin + script.startTime + script.duration,
+                    start: Math.max(0, (script.startTime - originTime) / 1000),
+                    end: Math.max(0, (script.startTime + script.duration - originTime) / 1000),
                     ...(script.sourceURL ? { sourceURL: script.sourceURL } : {}),
                     ...(script.invoker ? { invoker: script.invoker } : {}),
                     ...(script.invokerType ? { invokerType: script.invokerType } : {}),
@@ -177,7 +189,9 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
               }
             : {}),
         });
-    });
+    };
+    drainBlocks = () => recordBlocks(observer?.takeRecords() ?? []);
+    observer = new PerformanceObserver((list) => recordBlocks(list.getEntries()));
     observer.observe({ type, buffered: true });
   };
   const validate = (value: unknown): value is MessageToReporter => {
@@ -203,18 +217,12 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
     const payload = message.payload as Record<string, unknown>;
     const keys: Record<string, string[]> = {
       capture: ['mimeType'],
-      run: ['durationMs'],
       abort: ['reason'],
     };
     const allowed = keys[String(message.type)];
     if (!allowed || Object.keys(payload).some((key) => !allowed.includes(key)))
       throw new Error('Invalid protocol type or payload properties');
     if (message.type === 'capture' && payload.mimeType !== 'image/png') throw new Error('Invalid capture mimeType');
-    if (
-      message.type === 'run' &&
-      !(typeof payload.durationMs === 'number' && Number.isFinite(payload.durationMs) && payload.durationMs > 0)
-    )
-      throw new Error('Invalid run duration');
     if (message.type === 'abort' && typeof payload.reason !== 'string') throw new Error('Invalid abort reason');
     receivedSeq = message.seq as number;
     return true;
@@ -222,13 +230,6 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
   const receive = async (value: unknown) => {
     try {
       if (!enabled || disposed || !validate(value)) return;
-      const t1 = now();
-      incomingMessages.push({
-        type: value.type,
-        direction: 'toReporter',
-        sentAt: { clock: 'harness', t: value.sentAt },
-        receivedAt: { clock: 'reporter', t: t1 },
-      });
       switch (value.type) {
         case 'capture': {
           if (state !== 'ended') throw new Error('capture requires ended state');
@@ -254,21 +255,7 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
           send('capture', { at: now(), bytes }, [bytes]);
           break;
         }
-        case 'run':
-          if (state !== 'ready') throw new Error('run requires ready state');
-          // Reserve additional slots for unthrottled rendering, including the first ready frames.
-          if (!options.frameCapacity) {
-            capacity = Math.max(capacity, count + Math.ceil(value.payload.durationMs * 2));
-            const expanded = new Float64Array(capacity * 4);
-            expanded.set(data);
-            data = expanded;
-          }
-          state = 'running';
-          runStart ||= now();
-          runTimer = setTimeout(() => finish(), value.payload.durationMs);
-          break;
         case 'abort':
-          finish(true);
           api.dispose();
           break;
       }
@@ -281,6 +268,9 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
   };
   const api: Reporter = {
     enabled,
+    get running() {
+      return state === 'running' && !disposed;
+    },
     entryId,
     params: params as Record<string, unknown>,
     onCapture(callback) {
@@ -295,7 +285,6 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
       const id = phases.length;
       const mark: PhaseMark = { id, phase, start: { clock: 'reporter', t: now() } };
       phases.push(mark);
-      send('phase', { ...mark });
       return id;
     },
     phaseEnd(phase) {
@@ -306,7 +295,6 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
         return;
       }
       mark.end = { clock: 'reporter', t: now() };
-      send('phase', { ...mark });
     },
     ready() {
       if (!enabled || disposed) return;
@@ -315,14 +303,24 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
         return;
       }
       if (phases[0]?.phase === 'load' && !phases[0].end) api.phaseEnd(0);
-      loaded = true;
-      send('download-report', downloads!.snapshot('load'));
-      state = 'ready';
-      runStart = now();
-      send('ready', { at: runStart, renderStart: runStart });
+      // Stop all initialization instrumentation before allocating the measured window.
+      clearTimeout(watchdog);
+      drainBlocks?.();
+      observer?.disconnect();
+      downloadReports.push(downloads!.snapshot('load'));
+      downloads?.dispose();
+      if (!options.frameCapacity) {
+        capacity = Math.max(capacity, count + Math.ceil(durationMs * 2));
+        const expanded = new Float64Array(capacity * 4);
+        expanded.set(data);
+        data = expanded;
+      }
+      state = 'running';
+      readyAt = runStart = now();
+      runTimer = setTimeout(finish, durationMs);
     },
     frameBegin(frameOptions) {
-      if (!enabled || disposed || (state !== 'ready' && state !== 'running')) return -1;
+      if (!enabled || disposed || state !== 'running') return -1;
       if (count >= capacity) {
         overflow = true;
         return -1;
@@ -338,7 +336,7 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
       if (token >= 0 && token < count && enabled && !disposed) data[token * 4 + 1] = now();
     },
     frame(record) {
-      if (!enabled || disposed || (state !== 'ready' && state !== 'running')) return;
+      if (!enabled || disposed || state !== 'running') return;
       if (count >= capacity) {
         overflow = true;
         return;
@@ -367,12 +365,11 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
         });
     },
     environment(value) {
-      send('environment', value);
+      Object.assign(environment, value);
     },
     fail(cause) {
       if (!enabled || disposed) return;
       error(cause);
-      finish(true);
       api.dispose();
     },
     dispose() {
@@ -402,17 +399,7 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
   if (enabled) {
     window.addEventListener('message', listener);
     if (bridge) window.__performanceKitReceive = bridgeReceiver;
-    const supported = typeof PerformanceObserver === 'undefined' ? [] : PerformanceObserver.supportedEntryTypes;
-    send('hello', {
-      reporterVersion: '0.1.0',
-      navigationStart,
-      capabilities: {
-        gpuTimestamps: false,
-        longTasks: supported.includes('longtask'),
-        loaf: supported.includes('long-animation-frame'),
-      },
-    });
-    send('environment', {
+    Object.assign(environment, {
       userAgent: navigator.userAgent,
       crossOriginIsolated: globalThis.crossOriginIsolated,
       devicePixelRatio: window.devicePixelRatio,
@@ -421,7 +408,6 @@ export function createReporter(options: ReporterOptions = {}): Reporter {
     beginObservers();
     const load: PhaseMark = { id: 0, phase: 'load', start: { clock: 'reporter', t: navigationStart } };
     phases.push(load);
-    send('phase', { ...load });
   }
   return api;
 }

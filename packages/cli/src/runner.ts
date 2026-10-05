@@ -155,6 +155,7 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
       const url = new URL(entry.url, rendererServer?.url ?? server.url);
       url.searchParams.set('performanceKitRunId', runId);
       url.searchParams.set('performanceKitEntryId', entry.id);
+      url.searchParams.set('performanceKitDurationMs', String(entry.durationMs));
       url.searchParams.set('performanceKitParams', JSON.stringify(entry.params ?? {}));
       url.searchParams.set('performanceKitOrigin', new URL(server.url).origin);
       const input = {
@@ -205,7 +206,7 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
           );
         }
       } catch (error) {
-        const timestamp = Date.now();
+        const timestamp = 0;
         payload = {
           harness: { iframeCreated: timestamp, teardown: timestamp },
           reporter: { frames: [] },

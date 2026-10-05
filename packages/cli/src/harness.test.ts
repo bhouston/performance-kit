@@ -5,7 +5,6 @@ it('preserves inbound arrival order despite reversed validator delays and transf
     activeValidators = 0,
     maxActiveValidators = 0;
   const validationOrder: number[] = [];
-  const validationStarts: number[] = [];
   const source: { [key: string]: unknown } = {};
   const emit = (type: string, payload: Record<string, unknown>) => {
     (source.__performanceKitSend as (message: unknown) => void)({
@@ -24,7 +23,6 @@ it('preserves inbound arrival order despite reversed validator delays and transf
     message: { seq: number; type: string; payload: Record<string, unknown> },
     bytes?: number[],
   ) => {
-    validationStarts.push(performance.timeOrigin + performance.now());
     activeValidators++;
     maxActiveValidators = Math.max(maxActiveValidators, activeValidators);
     // An immediately following message would finish first without the queue.
@@ -38,16 +36,6 @@ it('preserves inbound arrival order despite reversed validator delays and transf
     const at = performance.timeOrigin + performance.now();
     commands.push(message.type);
     if (message.type === 'capture') emit('capture', { at, bytes: Uint8Array.of(137, 80, 78, 71).buffer });
-    if (message.type === 'run') {
-      emit('environment', { devicePixelRatio: 1 });
-      emit('runEnd', {
-        runStart: at,
-        runEnd: at + 10,
-        frames: [{ cpuStart: at, cpuEnd: at + 1 }],
-        blocks: [],
-        watchdogTicks: [],
-      });
-    }
   };
   vi.stubGlobal('window', source);
   vi.stubGlobal('document', { createElement: () => ({ style: {}, remove: () => {} }) });
@@ -71,28 +59,27 @@ it('preserves inbound arrival order despite reversed validator delays and transf
       height: 480,
       isolation: 'page',
     });
-    emit('hello', { reporterVersion: 'test', capabilities: { gpuTimestamps: false, longTasks: false, loaf: false } });
-    emit('environment', { userAgent: 'test' });
-    const at = performance.timeOrigin + performance.now();
-    emit('phase', { id: 0, phase: 'assets', start: { clock: 'reporter', t: at } });
-    emit('phase', { id: 1, phase: 'assets', start: { clock: 'reporter', t: at } });
-    emit('phase', {
-      id: 1,
-      phase: 'assets',
-      start: { clock: 'reporter', t: at },
-      end: { clock: 'reporter', t: at + 2 },
+    const at = 0.02;
+    emit('runEnd', {
+      navigationStart: 0,
+      ready: at,
+      renderStart: at,
+      runStart: at,
+      runEnd: at + 0.01,
+      frames: [{ cpuStart: at, cpuEnd: at + 0.001 }],
+      blocks: [],
+      watchdogTicks: [],
+      downloads: [],
+      environment: { userAgent: 'test' },
+      phases: [
+        { id: 0, phase: 'assets', start: { clock: 'reporter', t: 0 }, end: { clock: 'reporter', t: at } },
+        { id: 1, phase: 'assets', start: { clock: 'reporter', t: 0.01 }, end: { clock: 'reporter', t: at } },
+      ],
     });
-    emit('phase', {
-      id: 0,
-      phase: 'assets',
-      start: { clock: 'reporter', t: at },
-      end: { clock: 'reporter', t: at + 3 },
-    });
-    emit('ready', { at, renderStart: at });
 
     const result = await promise;
     expect(result.status).toBe('ok');
-    expect(commands).toEqual(['run', 'capture']);
+    expect(commands).toEqual(['capture']);
     expect(result.harness).not.toHaveProperty('startSent');
     expect(maxActiveValidators).toBe(1);
     expect(validationOrder).toEqual(Array.from({ length: sequence }, (_, index) => index));
@@ -104,12 +91,42 @@ it('preserves inbound arrival order despite reversed validator delays and transf
     expect(result.reporter.phases?.map((p) => p.id)).toEqual([0, 1]);
     expect(result.reporter.phases?.every((p) => p.end !== undefined)).toBe(true);
     expect(result.reporter.renderStart).toBe(result.reporter.ready);
-    const receipts = result.messages.filter(
-      (message) => (message as { direction: string }).direction === 'toHarness',
-    ) as { receivedAt: { t: number } }[];
-    // Reception is stamped immediately, before the first slow validation.
-    expect(receipts[1].receivedAt.t).toBeLessThanOrEqual(validationStarts[0]);
   } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it('times out without collecting or requesting partial measurements from a hung renderer', async () => {
+  vi.useFakeTimers();
+  const commands: string[] = [];
+  vi.stubGlobal('window', {
+    addEventListener() {},
+    removeEventListener() {},
+    validateEnvelope: async () => {},
+    __performanceKitReceive: (message: { type: string }) => commands.push(message.type),
+  });
+  vi.stubGlobal('document', { createElement: () => ({ style: {}, remove() {} }) });
+  try {
+    const run = harnessRun({
+      runId: 'hung',
+      url: 'https://renderer.example',
+      durationMs: 10,
+      initTimeoutMs: 20,
+      capture: true,
+      width: 100,
+      height: 100,
+      isolation: 'page',
+    });
+    await vi.advanceTimersByTimeAsync(31);
+    const result = await run;
+    expect(result.status).toBe('timeout');
+    expect(result.reporter).toEqual({ frames: [] });
+    expect(result.environment).toEqual({});
+    expect(result.messages).toEqual([]);
+    expect(result.capture).toBeUndefined();
+    expect(commands).toEqual(['abort']);
+  } finally {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   }
 });

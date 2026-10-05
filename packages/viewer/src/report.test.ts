@@ -16,26 +16,25 @@ const run: RunResult = {
   entry: { id: 'entry', name: 'Entry', renderer: { id: 'a', name: 'A' }, scene: { id: 'b', name: 'B' }, url: '/test' },
   networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
   config: { durationMs: 1000, vsync: 'on' },
-  harness: { teardown: 1000 },
+  harness: { teardown: 1 },
   status: 'ok',
   reporter: {
     navigationStart: 0,
-    ready: 100,
-    renderStart: 100,
-    runStart: 100,
-    runEnd: 1000,
-    frames: [100, 110, 140].map((cpuStart) => ({ cpuStart, cpuEnd: cpuStart + 1 })),
-    watchdogTicks: [0, 16, 96],
+    ready: 0.1,
+    renderStart: 0.1,
+    runStart: 0.1,
+    runEnd: 1,
+    frames: [0.1, 0.11, 0.14].map((cpuStart) => ({ cpuStart, cpuEnd: cpuStart + 0.001 })),
+    watchdogTicks: [0, 0.016, 0.096],
   },
 };
 it('uses means rather than medians, max absolute jitter and worst delay', () => {
-  expect(cardMetrics(processRun(run))).toEqual({
-    initTime: 100,
-    avgFrameRate: 50,
-    maxJitter: 10,
-    worstResponsiveness: 64,
-    download: undefined,
-  });
+  const metrics = cardMetrics(processRun(run));
+  expect(metrics.initTime).toBe(100);
+  expect(metrics.avgFrameRate).toBeCloseTo(50, 10);
+  expect(metrics.maxJitter).toBeCloseTo(10, 10);
+  expect(metrics.worstResponsiveness).toBe(64);
+  expect(metrics.download).toBeUndefined();
   const empty = processRun({ ...run, reporter: { frames: [] } });
   expect(cardMetrics(empty)).toEqual({
     initTime: undefined,
@@ -53,7 +52,9 @@ it('sorts each metric in both directions and leaves missing observations last', 
   b.statistics.averageFps = 25;
   b.statistics.maxJitter = 0.02;
   b.statistics.worstResponsiveness = 0.2;
-  for (const key of Object.keys(metricTable).filter((key) => key !== 'download') as (keyof typeof metricTable)[]) {
+  for (const key of Object.keys(metricTable).filter(
+    (metric) => metric !== 'download',
+  ) as (keyof typeof metricTable)[]) {
     expect(compareMetrics(a, b, key, 'bestFirst')).toBeLessThan(0);
     expect(compareMetrics(a, b, key, 'worstFirst')).toBeGreaterThan(0);
     expect(compareMetrics(a, empty, key, 'worstFirst')).toBeLessThan(0);
