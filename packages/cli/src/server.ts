@@ -45,14 +45,20 @@ export async function startServer(options: {
     processing = processing.then(async () => {
       if (closing) return;
       if (paths.includes('README.md')) publish({ type: 'readmeChanged' });
+      // Machine folders, renderer folders and machine.json renames can affect many results at once.
       const broad =
         paths.includes('') ||
-        paths.some((path) => path !== 'README.md' && path !== 'index.json' && path.split('/').length < 2);
-      const pairs = new Set(
+        paths.some(
+          (path) =>
+            path !== 'README.md' &&
+            path !== 'index.json' &&
+            (path.split('/').length < 3 || /^[^/]+\/machine\.json$/.test(path)),
+        );
+      const triples = new Set(
         paths
           .filter((path) => path && path !== 'README.md' && path !== 'index.json')
-          .map((path) => path.split('/').slice(0, 2).join('/'))
-          .filter((path) => path.split('/').length === 2),
+          .map((path) => path.split('/').slice(0, 3).join('/'))
+          .filter((path) => path.split('/').length === 3),
       );
       if (broad) {
         try {
@@ -63,16 +69,16 @@ export async function startServer(options: {
         }
         return;
       }
-      for (const pair of pairs) {
-        const [rendererId, sceneId] = pair.split('/');
+      for (const triple of triples) {
+        const [machineId, rendererId, sceneId] = triple.split('/');
         const needsProcessing = paths.some(
-          (path) => path === pair || path === `${pair}/metrics.json` || path === `${pair}/screenshot.avif`,
+          (path) => path === triple || path === `${triple}/metrics.json` || path === `${triple}/screenshot.avif`,
         );
         let ready = !needsProcessing;
         if (needsProcessing)
           for (let attempt = 0; attempt < 4; attempt++) {
             try {
-              await processResult(options.out, rendererId, sceneId, recordWrite);
+              await processResult(options.out, machineId, rendererId, sceneId, recordWrite);
               ready = true;
               break;
             } catch (error) {
@@ -83,7 +89,7 @@ export async function startServer(options: {
               await new Promise((done) => setTimeout(done, 500));
             }
           }
-        if (ready && !closing) publish({ type: 'resultChanged', rendererId, sceneId });
+        if (ready && !closing) publish({ type: 'resultChanged', machineId, rendererId, sceneId });
       }
       if (paths.includes('index.json') && !closing) publish({ type: 'indexChanged' });
     });
@@ -137,7 +143,7 @@ export async function startServer(options: {
       if (
         !directory &&
         path &&
-        !/(?:^|\/)(?:raw\.json|metrics\.json|screenshot\.avif|reference\.png|diff\.png)$/i.test(path) &&
+        !/(?:^|\/)(?:raw\.json|metrics\.json|screenshot\.avif|reference\.png|diff\.png|machine\.json)$/i.test(path) &&
         path !== 'README.md' &&
         path !== 'index.json'
       )
@@ -203,7 +209,7 @@ export async function startServer(options: {
         return;
       }
       const isResult =
-        /^\/[^/]+\/[^/]+\/(?:raw\.json|metrics\.json|screenshot\.avif|reference\.png|diff\.png)$/.test(path) ||
+        /^\/[^/]+\/[^/]+\/[^/]+\/(?:raw\.json|metrics\.json|screenshot\.avif|reference\.png|diff\.png)$/.test(path) ||
         path === '/README.md';
       const reporter = path.startsWith('/reporter/');
       const root = resolve(

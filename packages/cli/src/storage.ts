@@ -1,8 +1,14 @@
 import { mkdir, readFile, readdir, writeFile, cp, rename, stat, rm } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { assertRunResult, assertSuite, assertProcessedResult, processRun } from 'performance-kit-schema';
+import {
+  assertRunResult,
+  assertSuite,
+  assertProcessedResult,
+  assertNamedEntity,
+  processRun,
+} from 'performance-kit-schema';
 import { referenceDiff } from './convergence.js';
 import { encodeCapture } from './capture.js';
 import type { RunResult, ProcessedResult, Suite, NamedEntity } from 'performance-kit-schema';
@@ -31,6 +37,7 @@ export async function loadSuite(file: string): Promise<Suite> {
   return value;
 }
 export interface ResultReference {
+  machine: NamedEntity;
   renderer: NamedEntity;
   scene: NamedEntity;
   metrics: string;
@@ -39,7 +46,8 @@ export interface ResultReference {
   diff?: string;
 }
 export interface ReportIndex {
-  schemaVersion: 1;
+  schemaVersion: 2;
+  machines: NamedEntity[];
   results: ResultReference[];
 }
 export interface ResultRecord {
@@ -66,22 +74,46 @@ async function loadMetrics(root: string, prefix: string): Promise<ProcessedResul
   }
   if (result === undefined) return undefined;
   assertProcessedResult(result);
-  if (result.entry.renderer.id + '/' + result.entry.scene.id !== prefix)
+  const machineId = prefix.split('/')[0];
+  const recordedMachine = result.environment?.host.machineId;
+  if (
+    `${machineId}/${result.entry.renderer.id}/${result.entry.scene.id}` !== prefix ||
+    (recordedMachine !== undefined && recordedMachine !== machineId)
+  )
     throw new Error(`Result metadata does not match its folder: ${prefix}`);
   return result;
 }
+/** Reads `<machine>/machine.json`; machines without one are named by their folder id. */
+export async function readMachine(root: string, machineId: string): Promise<NamedEntity> {
+  let machine: unknown;
+  try {
+    machine = JSON.parse(await readFile(join(root, safeEntryId(machineId), 'machine.json'), 'utf8'));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { id: machineId, name: machineId };
+    throw error;
+  }
+  assertNamedEntity(machine);
+  if (machine.id !== machineId) throw new Error(`Machine metadata does not match its folder: ${machineId}`);
+  return machine;
+}
+export async function writeMachine(root: string, machine: NamedEntity): Promise<void> {
+  assertNamedEntity(machine);
+  safeEntryId(machine.id);
+  await atomicWrite(join(root, machine.id, 'machine.json'), `${JSON.stringify(machine, null, 2)}\n`);
+}
 export async function scanResults(root: string): Promise<{ runs: ResultRecord[] }> {
   const runs: ResultRecord[] = [];
-  for (const renderer of await directories(root))
-    for (const scene of await directories(join(root, renderer.name))) {
-      const prefix = `${renderer.name}/${scene.name}`;
-      const result = await loadMetrics(root, prefix);
-      if (result) runs.push({ result, file: `${prefix}/metrics.json` });
-    }
+  for (const machine of await directories(root))
+    for (const renderer of await directories(join(root, machine.name)))
+      for (const scene of await directories(join(root, machine.name, renderer.name))) {
+        const prefix = `${machine.name}/${renderer.name}/${scene.name}`;
+        const result = await loadMetrics(root, prefix);
+        if (result) runs.push({ result, file: `${prefix}/metrics.json` });
+      }
   return { runs };
 }
-async function referenceFor(root: string, result: ProcessedResult): Promise<ResultReference> {
-  const prefix = `${safeEntryId(result.entry.renderer.id)}/${safeEntryId(result.entry.scene.id)}`;
+async function referenceFor(root: string, machine: NamedEntity, result: ProcessedResult): Promise<ResultReference> {
+  const prefix = `${safeEntryId(machine.id)}/${safeEntryId(result.entry.renderer.id)}/${safeEntryId(result.entry.scene.id)}`;
   let screenshot: string | undefined;
   try {
     if (result.screenshot && (await stat(join(root, prefix, 'screenshot.avif'))).isFile())
@@ -90,6 +122,7 @@ async function referenceFor(root: string, result: ProcessedResult): Promise<Resu
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
   return {
+    machine,
     renderer: result.entry.renderer,
     scene: result.entry.scene,
     metrics: `${prefix}/metrics.json`,
@@ -100,6 +133,8 @@ async function referenceFor(root: string, result: ProcessedResult): Promise<Resu
 }
 async function saveIndex(root: string, index: ReportIndex, onWrite?: (file: string, contents: string) => void) {
   index.results = index.results.toSorted((a, b) => a.metrics.localeCompare(b.metrics));
+  const machines = new Map(index.results.map((item) => [item.machine.id, item.machine]));
+  index.machines = [...machines.values()].toSorted((a, b) => a.id.localeCompare(b.id));
   const contents = JSON.stringify(index);
   try {
     if ((await readFile(join(root, 'index.json'), 'utf8')) === contents) return;
@@ -114,41 +149,58 @@ export async function processResults(
   onWrite?: (file: string, contents: string) => void,
 ): Promise<ReportIndex> {
   await mkdir(root, { recursive: true });
-  const index: ReportIndex = { schemaVersion: 1, results: [] };
-  for (const { result } of (await scanResults(root)).runs) index.results.push(await referenceFor(root, result));
+  const index: ReportIndex = { schemaVersion: 2, machines: [], results: [] };
+  const machines = new Map<string, NamedEntity>();
+  for (const { result, file } of (await scanResults(root)).runs) {
+    const machineId = file.split('/')[0];
+    if (!machines.has(machineId)) machines.set(machineId, await readMachine(root, machineId));
+    index.results.push(await referenceFor(root, machines.get(machineId)!, result));
+  }
   await saveIndex(root, index, onWrite);
   return index;
 }
 export async function processResult(
   root: string,
+  machineId: string,
   rendererId: string,
   sceneId: string,
   onWrite?: (file: string, contents: string) => void,
 ): Promise<void> {
-  const prefix = `${safeEntryId(rendererId)}/${safeEntryId(sceneId)}`;
+  const prefix = `${safeEntryId(machineId)}/${safeEntryId(rendererId)}/${safeEntryId(sceneId)}`;
   const result = await loadMetrics(root, prefix);
-  const reference = result ? await referenceFor(root, result) : undefined;
+  const reference = result ? await referenceFor(root, await readMachine(root, machineId), result) : undefined;
   const index = await readReportIndex(root);
-  index.results = index.results.filter((item) => item.renderer.id !== rendererId || item.scene.id !== sceneId);
+  index.results = index.results.filter(
+    (item) => item.machine.id !== machineId || item.renderer.id !== rendererId || item.scene.id !== sceneId,
+  );
   if (reference) index.results.push(reference);
   await saveIndex(root, index, onWrite);
 }
 export async function readReportIndex(root: string): Promise<ReportIndex> {
   try {
-    return JSON.parse(await readFile(join(root, 'index.json'), 'utf8')) as ReportIndex;
+    const index = JSON.parse(await readFile(join(root, 'index.json'), 'utf8')) as ReportIndex;
+    // Indexes written before machine folders cannot be updated incrementally; start a fresh index.
+    if (index.schemaVersion === 2) return index;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { schemaVersion: 1, results: [] };
-    throw error;
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
+  return { schemaVersion: 2, machines: [], results: [] };
 }
 export async function writeRun(
   root: string,
+  machineId: string,
   result: RunResult,
   png?: Uint8Array,
   reference?: Uint8Array,
 ): Promise<string> {
   assertRunResult(result);
-  const folder = join(root, safeEntryId(result.entry.renderer.id), safeEntryId(result.entry.scene.id));
+  if (result.environment) result.environment.host.machineId = machineId;
+  const folder = join(
+    root,
+    safeEntryId(machineId),
+    safeEntryId(result.entry.renderer.id),
+    safeEntryId(result.entry.scene.id),
+  );
   await mkdir(folder, { recursive: true });
   if (png) {
     await atomicWrite(join(folder, 'screenshot.avif'), await encodeCapture(png));
@@ -182,7 +234,7 @@ export async function writeRun(
   const metrics = processRun(result);
   assertProcessedResult(metrics);
   await atomicWrite(file, `${JSON.stringify(metrics, null, 2)}\n`);
-  await processResult(root, result.entry.renderer.id, result.entry.scene.id);
+  await processResult(root, machineId, result.entry.renderer.id, result.entry.scene.id);
   return file;
 }
 export async function viewerDirectory(): Promise<string> {
@@ -208,23 +260,25 @@ export async function buildReport(out: string, site: string): Promise<void> {
   const current = new Set(index.results.map((item) => item.metrics));
   for (const old of previous.results ?? []) {
     if (current.has(old.metrics)) continue;
-    const folder = join(destination, safeEntryId(old.renderer.id), safeEntryId(old.scene.id));
+    const folder = join(destination, dirname(old.metrics));
+    if (!folder.startsWith(destination + '/')) continue;
     for (const name of ['metrics.json', 'screenshot.avif', 'reference.png', 'diff.png'])
       await rm(join(folder, name), { force: true });
   }
   await mkdir(destination, { recursive: true });
   await cp(await viewerDirectory(), destination, { recursive: true });
   for (const ref of index.results) {
-    await mkdir(join(destination, ref.renderer.id, ref.scene.id), { recursive: true });
+    const folder = join(destination, dirname(ref.metrics));
+    await mkdir(folder, { recursive: true });
     await cp(join(input, ref.metrics), join(destination, ref.metrics));
     if (ref.screenshot) await cp(join(input, ref.screenshot), join(destination, ref.screenshot));
-    else await rm(join(destination, ref.renderer.id, ref.scene.id, 'screenshot.avif'), { force: true });
+    else await rm(join(folder, 'screenshot.avif'), { force: true });
     for (const [file, name] of [
       [ref.reference, 'reference.png'],
       [ref.diff, 'diff.png'],
     ] as const) {
       if (file) await cp(join(input, file), join(destination, file));
-      else await rm(join(destination, ref.renderer.id, ref.scene.id, name), { force: true });
+      else await rm(join(folder, name), { force: true });
     }
   }
   try {

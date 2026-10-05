@@ -43,7 +43,7 @@ const launch = vi.hoisted(() =>
   })),
 );
 vi.mock('puppeteer', () => ({ default: { launch } }));
-import { runSuite, deadline } from './runner.js';
+import { defaultMachineId, runSuite, deadline } from './runner.js';
 describe('runner lifecycle', () => {
   it('persists flat processed workloads with actual browser metadata and process recycling', async () => {
     const root = await mkdtemp(join(tmpdir(), 'performance-runner-'));
@@ -76,10 +76,23 @@ describe('runner lifecycle', () => {
           ],
         }),
       );
-      const result = await runSuite({ suite, out: join(root, 'results'), port: 0, cooldownMs: 0, recycle: 1 });
+      const result = await runSuite({
+        suite,
+        out: join(root, 'results'),
+        machine: 'bench',
+        machineName: 'Bench Machine',
+        port: 0,
+        cooldownMs: 0,
+        recycle: 1,
+      });
       expect(result.results).toHaveLength(2);
       expect(launch).toHaveBeenCalledTimes(2);
-      const raw = JSON.parse(await readFile(join(result.out, 'test/cube/metrics.json'), 'utf8'));
+      const raw = JSON.parse(await readFile(join(result.out, 'bench/test/cube/metrics.json'), 'utf8'));
+      expect(raw.environment.host.machineId).toBe('bench');
+      expect(JSON.parse(await readFile(join(result.out, 'bench/machine.json'), 'utf8'))).toEqual({
+        id: 'bench',
+        name: 'Bench Machine',
+      });
       expect(raw.environment.userAgent).toBe('pinned-test-chrome');
       expect(raw.config.phaseColors).toEqual({ assets: '#123456' });
       expect(raw.environment.gpuAdapter).toEqual({ description: 'Real GPU' });
@@ -120,7 +133,9 @@ describe('runner lifecycle', () => {
       const timeout = await runSuite({ suite, out: join(root, 'timeout'), port: 0, cooldownMs: 0 });
       expect(timeout.results[0].status).toBe('timeout');
       expect(timeout.results[0].reporter.frames).toEqual([]);
-      expect(JSON.parse(await readFile(join(timeout.out, 'test/cube/metrics.json'), 'utf8')).status).toBe('timeout');
+      expect(
+        JSON.parse(await readFile(join(timeout.out, defaultMachineId(), 'test/cube/metrics.json'), 'utf8')).status,
+      ).toBe('timeout');
     } finally {
       scenario.environment = {};
       scenario.failure = undefined;
@@ -132,4 +147,10 @@ describe('runner lifecycle', () => {
     await expect(deadline(new Promise(() => {}), 2, 'run')).rejects.toThrow('Timeout during run');
     expect(await deadline(Promise.resolve(7), 100, 'run')).toBe(7);
   });
+});
+it('derives a path-safe default machine ID from the host name', () => {
+  expect(defaultMachineId('build001')).toBe('build001');
+  expect(defaultMachineId('Bens MacBook Air.local')).toBe('bens-macbook-air.local');
+  expect(defaultMachineId('-_Host_-')).toBe('host_');
+  expect(defaultMachineId('!!!')).toBe('local');
 });

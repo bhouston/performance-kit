@@ -7,55 +7,59 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const require = createRequire(root + '/packages/cli/package.json');
 const { default: puppeteer } = await import(pathToFileURL(require.resolve('puppeteer')));
-const { writeRun, buildReport } = await import(pathToFileURL(root + '/packages/cli/dist/storage.js'));
+const { writeRun, writeMachine, buildReport } = await import(pathToFileURL(root + '/packages/cli/dist/storage.js'));
 const { startServer } = await import(pathToFileURL(root + '/packages/cli/dist/server.js'));
 const temp = await mkdtemp(join(tmpdir(), 'viewer-smoke-'));
 let browser, server;
+const run = (i, init, frame) => ({
+  schemaVersion: 1,
+  runId: `run-${i}`,
+  entry: {
+    id: `entry-${i}`,
+    name: `Entry ${i}`,
+    renderer: { id: `renderer-${i}`, name: `Renderer ${i}` },
+    scene: { id: 'cube', name: 'Cube' },
+    url: '/cube',
+  },
+  networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
+  config: { durationMs: 4000, vsync: 'on', phaseColors: { assets: '#8b5cf6' } },
+  harness: { teardown: 5.2 },
+  reporter: {
+    navigationStart: 0,
+    ready: init / 1000,
+    renderStart: init / 1000,
+    runStart: init / 1000,
+    runEnd: i === 7 ? 10 : 15,
+    frames: Array.from({ length: 80 }, (_, n) => ({
+      cpuStart: (init + n * frame) / 1000,
+      cpuEnd: (1 + init + n * frame) / 1000,
+    })),
+    phases: [
+      {
+        id: 0,
+        phase: 'assets',
+        start: { clock: 'reporter', t: 0 },
+        end: { clock: 'reporter', t: init / 2000 },
+      },
+      {
+        id: 1,
+        phase: 'assets',
+        start: { clock: 'reporter', t: init / 2000 },
+        end: { clock: 'reporter', t: init / 1000 },
+      },
+    ],
+    watchdogTicks: [0, 0.016, 0.05, 0.08, 0.096],
+  },
+  status: 'ok',
+});
 try {
+  await writeMachine(temp, { id: 'laptop', name: 'Laptop' });
+  await writeMachine(temp, { id: 'workstation', name: 'Workstation' });
+  await writeRun(temp, 'workstation', run(9, 100, 10));
   for (let i = 0; i < 8; i++) {
     const init = 100 + i * 100,
       frame = 10 + i * 5;
-    await writeRun(temp, {
-      schemaVersion: 1,
-      runId: `run-${i}`,
-      entry: {
-        id: `entry-${i}`,
-        name: `Entry ${i}`,
-        renderer: { id: `renderer-${i}`, name: `Renderer ${i}` },
-        scene: { id: 'cube', name: 'Cube' },
-        url: '/cube',
-      },
-      networkProfile: { name: 'unthrottled', latencyMs: 0, downloadBytesPerSec: -1, uploadBytesPerSec: -1 },
-      config: { durationMs: 4000, vsync: 'on', phaseColors: { assets: '#8b5cf6' } },
-      harness: { teardown: 5.2 },
-      reporter: {
-        navigationStart: 0,
-        ready: init / 1000,
-        renderStart: init / 1000,
-        runStart: init / 1000,
-        runEnd: i === 7 ? 10 : 15,
-        frames: Array.from({ length: 80 }, (_, n) => ({
-          cpuStart: (init + n * frame) / 1000,
-          cpuEnd: (1 + init + n * frame) / 1000,
-        })),
-        phases: [
-          {
-            id: 0,
-            phase: 'assets',
-            start: { clock: 'reporter', t: 0 },
-            end: { clock: 'reporter', t: init / 2000 },
-          },
-          {
-            id: 1,
-            phase: 'assets',
-            start: { clock: 'reporter', t: init / 2000 },
-            end: { clock: 'reporter', t: init / 1000 },
-          },
-        ],
-        watchdogTicks: [0, 0.016, 0.05, 0.08, 0.096],
-      },
-      status: 'ok',
-    });
+    await writeRun(temp, 'laptop', run(i, init, frame));
   }
   await buildReport(temp, temp + '-site');
   server = await startServer({ out: temp + '-site', port: 0 });
@@ -84,6 +88,17 @@ try {
   assert.equal(await page.$$eval('.card:first-of-type .phase-legend span', (nodes) => nodes.length), 1);
   const ids = () => page.$$eval('.card', (nodes) => nodes.map((n) => n.id));
   assert.equal((await ids())[0], '10-renderer-0-cube');
+  assert.deepEqual(await page.$$eval('[aria-label="Machines"] option', (nodes) => nodes.map((n) => n.textContent)), [
+    'Laptop',
+    'Workstation',
+  ]);
+  assert.equal((await ids()).length, 8);
+  await page.select('[aria-label="Machines"]', 'workstation');
+  await page.waitForFunction(() => document.querySelectorAll('.card').length === 1);
+  assert.deepEqual(await ids(), ['10-renderer-9-cube']);
+  assert.match(page.url(), /machine=workstation/);
+  await page.select('[aria-label="Machines"]', 'laptop');
+  await page.waitForFunction(() => document.querySelectorAll('.card').length === 8);
   await page.select('[aria-label="Sort cards"]', 'avgFrameRate');
   await page.select('[aria-label="Sort direction"]', 'worstFirst');
   await page.waitForFunction(() => document.querySelector('.card')?.id === '10-renderer-7-cube');
@@ -175,7 +190,7 @@ try {
   await page.screenshot({ path: join(temp, 'dark.png'), fullPage: true });
   assert.deepEqual(errors, []);
   console.log(
-    'PASS: sorting/reload, card navigation, cold detail URL, back scroll, bookmark/clipboard, chart labels, CPU/GPU selector, mobile layout, dark theme, static config transport',
+    'PASS: machine selector, sorting/reload, card navigation, cold detail URL, back scroll, bookmark/clipboard, chart labels, CPU/GPU selector, mobile layout, dark theme, static config transport',
   );
 } finally {
   await browser?.close();

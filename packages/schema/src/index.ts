@@ -383,6 +383,7 @@ export const MessageToHarnessSchema = Type.Union([
 export type MessageToReporter = Static<typeof MessageToReporterSchema>;
 export type MessageToHarness = Static<typeof MessageToHarnessSchema>;
 const ajv = new Ajv({ allErrors: true, strict: false });
+export const validateNamedEntity = ajv.compile<NamedEntity>(NamedEntitySchema);
 export const validateSuite = ajv.compile<Suite>(SuiteSchema);
 export const validateRunResult = ajv.compile<RunResult>(RunResultSchema);
 const validateProcessedSchema = ajv.compile<ProcessedResult>(ProcessedResultSchema);
@@ -453,6 +454,9 @@ export const validateMessageToHarness: ValidateFunction<MessageToHarness> = Obje
 ) as ValidateFunction<MessageToHarness>;
 function assert<T>(validator: ValidateFunction<T>, value: unknown, label: string): asserts value is T {
   if (!validator(value)) throw new Error(`${label}: ${ajv.errorsText(validator.errors, { separator: '; ' })}`);
+}
+export function assertNamedEntity(value: unknown): asserts value is NamedEntity {
+  assert(validateNamedEntity, value, 'Invalid named entity');
 }
 export function assertSuite(value: unknown): asserts value is Suite {
   assert(validateSuite, value, 'Invalid suite');

@@ -58,18 +58,22 @@ Instrument the renderer with the reporter API below, then run:
 pnpm cli run --suite suite.json --renderer-root renderer-pages --out results
 ```
 
-`params` pass through to the renderer verbatim. Each renderer/scene pair has one result; repeated runs replace it. Measurement starts immediately from ready, with no warmup. A suite must not contain duplicate renderer/scene pairs. Entry, renderer, and scene IDs use letters, numbers, `.`, `_`, or `-`, and start with a letter or number. Names are display text and may contain spaces. Give each renderer configuration its own ID, including variants such as `three-new--ssgi-half`, so the viewer and CLI can distinguish them. Use the generated [suite JSON Schema](packages/schema/schemas/suite.schema.json) for editor completion.
+`params` pass through to the renderer verbatim. Each renderer/scene pair has one result per machine; repeated runs replace it. Measurement starts immediately from ready, with no warmup. A suite must not contain duplicate renderer/scene pairs. Entry, renderer, and scene IDs use letters, numbers, `.`, `_`, or `-`, and start with a letter or number. Names are display text and may contain spaces. Give each renderer configuration its own ID, including variants such as `three-new--ssgi-half`, so the viewer and CLI can distinguish them. Use the generated [suite JSON Schema](packages/schema/schemas/suite.schema.json) for editor completion.
 
-Each invocation writes a flat result folder:
+Each invocation writes into the folder for the benchmark machine:
 
 ```text
 results/
   README.md                         optional Markdown preamble above the results
-  <renderer.id>/
-    <scene.id>/
-      metrics.json                  processed statistics and bounded display data
-      screenshot.avif               optional capture
+  <machine.id>/
+    machine.json                    optional {"id", "name"} display name, e.g. "MacBook Air M3"
+    <renderer.id>/
+      <scene.id>/
+        metrics.json                processed statistics and bounded display data
+        screenshot.avif             optional capture
 ```
+
+`--machine <id>` selects the machine folder and defaults to a slug of the host name. `--machine-name "MacBook Air M3"` writes `machine.json`; a machine without one is displayed by its ID. The machine ID is also recorded in `environment.host.machineId`. When results exist for more than one machine, the viewer shows a **Machines** selector in the navigation; each machine's results are filtered and sorted separately, and the selection is kept in the URL as `?machine=<id>`.
 
 Captures use the same settings as ss-fidelity: AVIF quality 90, chroma subsampling `4:4:4`, and alpha removed. The browser captures lossless PNG after the measured run ends; the runner then converts it to AVIF. Frames are measured immediately from ready, including the first rendering frames, with no warmup wait. Each renderer/scene pair runs once and saves compact metrics.json directly; new runs never write raw.json. Timeouts and errors are written as results, and `run` exits nonzero when any entry fails.
 
@@ -83,15 +87,15 @@ Place an optional `README.md` in the results root. The viewer renders it below t
 
 The CLI is available from this source checkout through `pnpm cli`:
 
-| Command                                                             | Use                                                                                                               |
-| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `pnpm cli run --suite suite.json --out results`                     | Execute each workload once and save metrics. Add `--renderer my-renderer` or `--scene cube` to select stable IDs. |
-| `pnpm cli process --out results`                                    | Validate raw files and save processed metrics plus the lightweight result index.                                  |
-| `pnpm cli dev --out results`                                        | Watch saved results and the optional README, reload connected viewers, and highlight updated entries.             |
-| `pnpm cli serve --out results`                                      | Serve saved results without watching files or opening a live channel.                                             |
-| `pnpm cli build --out results --site site`                          | Export the viewer, processed metrics, captures, and optional preamble for static hosting.                         |
-| `pnpm cli validate --suite suite.json`                              | Validate suite configuration. Use `--results results` to validate saved runs.                                     |
-| `pnpm cli compare --a renderer=new --b renderer=base --out results` | Compare matching workloads in the terminal. Select renderer or scene IDs, or pass two result directories.         |
+| Command                                                             | Use                                                                                                                                                                                          |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm cli run --suite suite.json --out results`                     | Execute each workload once and save metrics. Add `--renderer my-renderer` or `--scene cube` to select stable IDs, and `--machine <id> --machine-name <name>` to label the benchmark machine. |
+| `pnpm cli process --out results`                                    | Validate raw files and save processed metrics plus the lightweight result index.                                                                                                             |
+| `pnpm cli dev --out results`                                        | Watch saved results and the optional README, reload connected viewers, and highlight updated entries.                                                                                        |
+| `pnpm cli serve --out results`                                      | Serve saved results without watching files or opening a live channel.                                                                                                                        |
+| `pnpm cli build --out results --site site`                          | Export the viewer, processed metrics, captures, and optional preamble for static hosting.                                                                                                    |
+| `pnpm cli validate --suite suite.json`                              | Validate suite configuration. Use `--results results` to validate saved runs.                                                                                                                |
+| `pnpm cli compare --a renderer=new --b renderer=base --out results` | Compare matching workloads in the terminal. Select renderer or scene IDs, or pass two result directories.                                                                                    |
 
 Run `pnpm cli <command> --help` for all options. `dev` uses server-sent events to refresh the viewer when result files or the optional README change, including files written by another process. Live reload is automatic in development. `dev` starts at `--port` (default 4400) and tries successive ports if occupied; open the actual URL printed at startup. `serve` uses only the configured port (default 4400) and fails if it is occupied. `serve` and static exports load the saved report without a live channel. The CLI computes and saves `metrics.json` before notifying the viewer. The viewer fetches only processed metrics and screenshots; static exports omit raw data.
 
