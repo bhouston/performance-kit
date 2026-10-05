@@ -122,7 +122,13 @@ export async function runSuite(options: RunOptions): Promise<{ out: string; resu
             requestAdapter: () => Promise<{ info?: unknown; features?: Set<string> } | null>;
           };
         };
-        const adapter = await nav.gpu?.requestAdapter();
+        // Headless Chrome on Linux/Vulkan can return null for the first adapter request while the GPU
+        // process initializes; retrying here also warms it up for the measured pages.
+        let adapter = await nav.gpu?.requestAdapter();
+        for (let attempt = 0; nav.gpu && !adapter && attempt < 30; attempt++) {
+          await new Promise((done) => setTimeout(done, 100));
+          adapter = await nav.gpu.requestAdapter();
+        }
         const info = adapter?.info as { vendor?: string; architecture?: string; description?: string } | undefined;
         const gl = document.createElement('canvas').getContext('webgl2');
         const debug = gl?.getExtension('WEBGL_debug_renderer_info');
